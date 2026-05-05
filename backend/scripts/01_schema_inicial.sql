@@ -768,8 +768,7 @@ SELECT
     COUNT(*) FILTER (WHERE t.titularidade = 'dependente')  AS qtd_dependentes,
     MAX(t.mes_ultimo_vinculo)          AS ultimo_vinculo
 FROM bss.trabalhador t
-WHERE t.ativo
-  AND t.situacao = 'ativo'
+WHERE t.situacao = 'ativo'
   AND t.id_empresa_atual IS NOT NULL
   AND t.id_sindicato_atual IS NOT NULL
 GROUP BY t.id_empresa_atual, t.id_sindicato_atual;
