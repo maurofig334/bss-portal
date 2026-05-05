@@ -97,19 +97,20 @@ def sync(dry_run: bool = False, limite: int | None = None) -> int:
     prog = Progresso(total=None, nome="sindicato")
 
     with get_mysql_connection() as mysql_conn:
-        with get_pg_connection() as pg_conn:
-            def converter_iter():
-                for linha in mysql_iter(mysql_conn, sql, batch_size=200):
-                    if dry_run and prog.contador < 3:
-                        print(f"  amostra: {linha}")
-                    prog.tick()
-                    yield _converter(linha)
+        def converter_iter():
+            for linha in mysql_iter(mysql_conn, sql, batch_size=200):
+                if dry_run and prog.contador < 3:
+                    print(f"  amostra: {linha}")
+                prog.tick()
+                yield _converter(linha)
 
-            if dry_run:
-                # Apenas conta + imprime amostras
-                for _ in converter_iter():
-                    pass
-            else:
+        if dry_run:
+            # Dry-run NÃO conecta no Postgres — só lê do MySQL e imprime amostras.
+            for _ in converter_iter():
+                pass
+        else:
+            # Sync de verdade: abre Postgres só agora e UPSERT em lote.
+            with get_pg_connection() as pg_conn:
                 pg_executemany(pg_conn, SQL_UPSERT, converter_iter(), batch_size=200)
 
     prog.fim()
