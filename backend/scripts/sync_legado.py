@@ -28,6 +28,8 @@ import time
 from app.sync import sindicato as sync_sindicato
 from app.sync import empresa as sync_empresa
 from app.sync import trabalhador as sync_trabalhador
+from app.sync import boleto as sync_boleto
+from app.sync import boleto_item as sync_boleto_item
 # (import dos demais aqui conforme implementarmos)
 
 
@@ -36,6 +38,8 @@ TABELAS = {
     "sindicato":   sync_sindicato.sync,
     "empresa":     sync_empresa.sync,
     "trabalhador": sync_trabalhador.sync,
+    "boleto":      sync_boleto.sync,
+    "boleto_item": sync_boleto_item.sync,
 }
 
 # Ordem recomendada quando rodar "todas"
@@ -43,8 +47,8 @@ ORDEM_TODAS = [
     "sindicato",
     "empresa",
     "trabalhador",
-    # "lista_mensal_item",
-    # "boleto",
+    "boleto",
+    "boleto_item",
     # "processo",
 ]
 

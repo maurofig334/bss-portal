@@ -425,10 +425,13 @@ CREATE INDEX idx_lmi_sind_mes ON bss.lista_mensal_item (id_sindicato, mes_refere
 CREATE TABLE bss.boleto (
     id                      BIGSERIAL PRIMARY KEY,
     id_legado_uuid          CHAR(36) UNIQUE,
-    numero_boleto           BIGINT UNIQUE,        -- = id_boleto_c do legado (sequencial)
+    -- numero_boleto: deveria ser único (sequencial), mas legado tem dupes.
+    numero_boleto           BIGINT,
     id_lista_mensal         BIGINT REFERENCES bss.lista_mensal(id),
-    id_empresa              BIGINT NOT NULL REFERENCES bss.empresa(id),
-    id_sindicato            BIGINT NOT NULL REFERENCES bss.sindicato(id),
+    -- FKs nullable durante migração (legado tem registros órfãos).
+    -- Em produção, novos boletos devem sempre preencher.
+    id_empresa              BIGINT REFERENCES bss.empresa(id),
+    id_sindicato            BIGINT REFERENCES bss.sindicato(id),
     mes_referencia          DATE NOT NULL,        -- dia 1 do mês de referência
     -- Valores:
     qtd_trabalhadores       INT NOT NULL DEFAULT 0,
@@ -467,8 +470,9 @@ CREATE TABLE bss.boleto_item (
     id_trabalhador          BIGINT NOT NULL REFERENCES bss.trabalhador(id),
     id_sindicato            BIGINT NOT NULL REFERENCES bss.sindicato(id),  -- redundante (= boleto.id_sindicato), facilita queries
     mes_referencia          DATE NOT NULL,        -- redundante mas crítico pra performance
-    -- Snapshot de valor (importante: se sindicato mudar taxa, esse fica imutável):
-    taxa_aplicada           NUMERIC(10,2) NOT NULL,
+    -- Snapshot de valor (se sindicato mudar taxa, esse fica imutável).
+    -- Default 0: na migração não temos histórico, novos itens preenchem corretamente.
+    taxa_aplicada           NUMERIC(10,2) NOT NULL DEFAULT 0,
     eh_dependente           BOOLEAN NOT NULL DEFAULT FALSE,
     criado_em               TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
