@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BSS — Início</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/app/js/api.js"></script>
+  <style>body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+  <nav class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg bg-indigo-600 text-white text-sm font-bold flex items-center justify-center">BSS</div>
+      <span class="text-lg font-semibold text-gray-900">Benefício Social Sindical</span>
+    </div>
+    <div class="flex items-center gap-3 text-sm">
+      <span class="text-gray-600" id="usuario-info">—</span>
+      <button onclick="logout()" class="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-50 text-gray-700">
+        Sair
+      </button>
+    </div>
+  </nav>
+
+  <main class="max-w-5xl mx-auto p-8">
+    <h1 class="text-2xl font-bold text-gray-900 mb-2">Bem-vindo</h1>
+    <p class="text-gray-600 mb-8">
+      Esta é a tela inicial. Os módulos de Empresas, Sindicatos, Trabalhadores,
+      Boletos e Processos serão construídos nos próximos commits.
+    </p>
+
+    <div class="bg-white border border-gray-200 rounded-lg p-6">
+      <h2 class="text-sm font-semibold text-gray-500 uppercase mb-3">Status da plataforma</h2>
+      <div id="status-box" class="text-sm text-gray-600">Verificando...</div>
+    </div>
+  </main>
+
+  <script>
+    const u = exigirLogin();
+    if (u) {
+      document.getElementById("usuario-info").textContent = `${u.nome} (${u.perfil || "—"})`;
+    }
+
+    fetch("/health").then(r => r.json()).then(d => {
+      document.getElementById("status-box").innerHTML = `
+        <div class="grid grid-cols-2 gap-4">
+          <div><span class="text-gray-400">API:</span> <span class="text-emerald-600 font-medium">${d.api}</span></div>
+          <div><span class="text-gray-400">Banco:</span> <span class="text-emerald-600 font-medium">${d.database}</span></div>
+          <div><span class="text-gray-400">Versão:</span> ${d.version}</div>
+          <div><span class="text-gray-400">DB:</span> ${d.conexao?.db ?? "—"}</div>
+        </div>
+      `;
+    }).catch(e => {
+      document.getElementById("status-box").innerHTML = `<span class="text-red-600">Erro: ${e.message}</span>`;
+    });
+  </script>
+</body>
+</html>

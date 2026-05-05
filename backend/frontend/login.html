@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BSS — Login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/app/js/api.js"></script>
+  <style>body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }</style>
+</head>
+<body class="bg-slate-50 min-h-screen flex items-center justify-center">
+
+  <main class="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 m-4">
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-600 text-white text-2xl font-bold mb-3">
+        BSS
+      </div>
+      <h1 class="text-2xl font-bold text-gray-900">Benefício Social Sindical</h1>
+      <p class="text-gray-500 text-sm mt-1">Entre com sua conta para continuar</p>
+    </div>
+
+    <form id="form-login" class="space-y-4">
+      <div>
+        <label for="email" class="block mb-1 text-sm font-medium text-gray-700">E-mail</label>
+        <input type="email" id="email" name="email" required autofocus
+               placeholder="seu@email.com"
+               class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full p-2.5" />
+      </div>
+
+      <div>
+        <label for="senha" class="block mb-1 text-sm font-medium text-gray-700">Senha</label>
+        <input type="password" id="senha" name="senha" required
+               placeholder="••••••"
+               class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full p-2.5" />
+      </div>
+
+      <div id="erro" class="hidden text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
+
+      <button type="submit" id="btn-entrar"
+              class="w-full text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-300 font-medium rounded-lg text-sm px-5 py-2.5 disabled:opacity-50">
+        Entrar
+      </button>
+    </form>
+
+    <p class="text-center text-xs text-gray-400 mt-6">BSS <span id="versao">…</span></p>
+  </main>
+
+  <script>
+    if (usuarioAtual()) {
+      window.location.href = "/app/index.html";
+    }
+
+    fetch("/version").then(r => r.json())
+      .then(d => { document.getElementById("versao").textContent = "v" + d.version; })
+      .catch(() => { document.getElementById("versao").textContent = ""; });
+
+    const form    = document.getElementById("form-login");
+    const btn     = document.getElementById("btn-entrar");
+    const divErro = document.getElementById("erro");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      divErro.classList.add("hidden");
+      btn.disabled = true;
+      btn.textContent = "Entrando...";
+      try {
+        await apiLogin(
+          document.getElementById("email").value.trim(),
+          document.getElementById("senha").value
+        );
+        window.location.href = "/app/index.html";
+      } catch (e) {
+        divErro.textContent = e.message;
+        divErro.classList.remove("hidden");
+        btn.disabled = false;
+        btn.textContent = "Entrar";
+      }
+    });
+  </script>
+</body>
+</html>

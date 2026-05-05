@@ -1,0 +1,25 @@
+# Ambiente Python
+**/venv/
+**/.venv/
+**/env/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Segredos
+**/.env
+*.env
+!*.env.example
+
+# Saídas de scripts (não commita análise do legado)
+**/schema_suitecrm.sql
+**/schema_suitecrm_resumo.md
+**/schema_suitecrm_dados.json
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
