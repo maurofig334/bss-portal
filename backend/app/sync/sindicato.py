@@ -14,21 +14,23 @@ from ..database import get_mysql_connection, get_pg_connection
 from ._base import Progresso, mysql_iter, pg_executemany, so_digitos, trim_or_none
 
 
-# Query do legado: junta tabela base + custom
+# Query do legado: junta tabela base + custom.
+# Nomes das colunas custom obtidos via inspecionar_cstm (2026-05-05).
 SQL_LEGADO = """
     SELECT
-        s.id                        AS uuid,
-        s.name                      AS razao_social,
-        sc.nome_fantasia_c          AS nome_fantasia,
-        sc.cnpj_c                   AS cnpj,
-        sc.federacao_c              AS federacao,
-        sc.categoria_c              AS categoria,
-        sc.presidente_c             AS presidente,
-        sc.vice_presidente_c        AS vice_presidente,
-        sc.uf_abrangencia_c         AS uf_abrangencia,
-        sc.contrato_c               AS contrato_bss,
-        sc.em_atendimento_c         AS em_atendimento,
-        s.deleted                   AS deletado_legado
+        s.id                            AS uuid,
+        s.name                          AS razao_social,
+        sc.razsocial_c                  AS nome_fantasia,
+        sc.cnpj_c                       AS cnpj,
+        sc.federacao_c                  AS federacao,
+        sc.categoria_c                  AS categoria,
+        sc.presidente_c                 AS presidente,
+        sc.vicepresidente_c             AS vice_presidente,
+        sc.ufabangencia_c               AS uf_abrangencia,
+        sc.contrato_bss_c               AS contrato_bss,
+        sc.ematendimento_c              AS em_atendimento,
+        sc.trabalhadores_ativos_c       AS qtd_trabalhadores_ativos,
+        sc.trabalhadores_inativos_c     AS qtd_trabalhadores_inativos
     FROM sindi_sindicatos s
     LEFT JOIN sindi_sindicatos_cstm sc ON sc.id_c = s.id
     WHERE s.deleted = 0
@@ -40,9 +42,10 @@ SQL_UPSERT = """
     INSERT INTO bss.sindicato (
         id_legado_uuid, razao_social, nome_fantasia, cnpj,
         federacao, categoria, presidente, vice_presidente,
-        uf_abrangencia, contrato_bss, em_atendimento, ativo
+        uf_abrangencia, contrato_bss, em_atendimento,
+        qtd_trabalhadores_ativos, qtd_trabalhadores_inativos, ativo
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
     ON CONFLICT (id_legado_uuid) DO UPDATE
         SET razao_social    = EXCLUDED.razao_social,
             nome_fantasia   = EXCLUDED.nome_fantasia,
@@ -54,6 +57,8 @@ SQL_UPSERT = """
             uf_abrangencia  = EXCLUDED.uf_abrangencia,
             contrato_bss    = EXCLUDED.contrato_bss,
             em_atendimento  = EXCLUDED.em_atendimento,
+            qtd_trabalhadores_ativos    = EXCLUDED.qtd_trabalhadores_ativos,
+            qtd_trabalhadores_inativos  = EXCLUDED.qtd_trabalhadores_inativos,
             atualizado_em   = NOW()
 """
 
@@ -65,11 +70,12 @@ def _converter(linha: dict) -> tuple:
         True if em_atend in (1, "1", True, "Sim", "S") else False
         if em_atend in (0, "0", False, "Não", "N") else True  # default ativo
     )
+    cnpj = so_digitos(linha.get("cnpj"))
     return (
         linha["uuid"],
         trim_or_none(linha["razao_social"], 255) or "(SEM NOME)",
         trim_or_none(linha.get("nome_fantasia"), 255),
-        so_digitos(linha.get("cnpj"))[:14] if so_digitos(linha.get("cnpj")) else None,
+        cnpj[:14] if cnpj else None,
         trim_or_none(linha.get("federacao"), 255),
         trim_or_none(linha.get("categoria"), 100),
         trim_or_none(linha.get("presidente"), 255),
@@ -77,6 +83,8 @@ def _converter(linha: dict) -> tuple:
         trim_or_none(linha.get("uf_abrangencia"), 2),
         trim_or_none(linha.get("contrato_bss"), 255),
         em_atend_bool,
+        int(linha.get("qtd_trabalhadores_ativos") or 0),
+        int(linha.get("qtd_trabalhadores_inativos") or 0),
     )
 
 
