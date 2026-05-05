@@ -24,7 +24,7 @@ from ._base import Progresso, mysql_iter, pg_executemany, so_digitos, trim_or_no
 SQL_LEGADO = """
     SELECT
         t.id                                AS uuid,
-        t.name                              AS nome_completo,
+        TRIM(CONCAT_WS(' ', t.first_name, t.last_name)) AS nome_completo,
         COALESCE(NULLIF(tc.cpf_unformat_c, ''), tc.cpf_c) AS cpf_raw,
         tc.data_nascimento_c                AS data_nascimento,
         tc.data_admissao_c                  AS data_admissao,
@@ -35,7 +35,12 @@ SQL_LEGADO = """
         tc.dep_relacionados_c               AS qtd_dependentes,
         tc.situacaodotrabalhador_c          AS situacao,
         tc.data_fim_carencia_c              AS data_fim_carencia,
-        tc.ultimo_pagamento_c               AS ultimo_pagamento_em
+        tc.ultimo_pagamento_c               AS ultimo_pagamento_em,
+        COALESCE(NULLIF(t.phone_mobile,''), NULLIF(t.phone_work,''), NULLIF(t.phone_home,'')) AS telefone,
+        t.primary_address_street            AS logradouro,
+        t.primary_address_city              AS cidade,
+        t.primary_address_state             AS uf,
+        t.primary_address_postalcode        AS cep
     FROM traba_trabalhadores t
     LEFT JOIN traba_trabalhadores_cstm tc ON tc.id_c = t.id
     WHERE t.deleted = 0
@@ -47,9 +52,10 @@ SQL_UPSERT = """
         id_legado_uuid, cpf, nome_completo, data_nascimento, data_admissao,
         id_empresa_atual, id_sindicato_atual,
         titularidade, cpf_titular, qtd_dependentes_ativos,
-        situacao, data_fim_carencia, ultimo_pagamento_em
+        situacao, data_fim_carencia, ultimo_pagamento_em,
+        telefone, logradouro, cidade, uf, cep
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (id_legado_uuid) DO UPDATE
         SET cpf                     = EXCLUDED.cpf,
             nome_completo           = EXCLUDED.nome_completo,
@@ -63,6 +69,11 @@ SQL_UPSERT = """
             situacao                = EXCLUDED.situacao,
             data_fim_carencia       = EXCLUDED.data_fim_carencia,
             ultimo_pagamento_em     = EXCLUDED.ultimo_pagamento_em,
+            telefone                = EXCLUDED.telefone,
+            logradouro              = EXCLUDED.logradouro,
+            cidade                  = EXCLUDED.cidade,
+            uf                      = EXCLUDED.uf,
+            cep                     = EXCLUDED.cep,
             atualizado_em           = NOW()
 """
 
@@ -111,6 +122,7 @@ def _carregar_mappings(pg_conn) -> tuple[dict, dict]:
 def _converter(linha: dict, emp_map: dict, sind_map: dict) -> tuple:
     cpf = so_digitos(linha.get("cpf_raw"))
     cpf_titular = so_digitos(linha.get("cpf_titular"))
+    cep = so_digitos(linha.get("cep"))
     return (
         linha["uuid"],
         cpf[:11] if cpf else None,
@@ -125,6 +137,11 @@ def _converter(linha: dict, emp_map: dict, sind_map: dict) -> tuple:
         _normalizar_situacao(linha.get("situacao")),
         linha.get("data_fim_carencia"),
         linha.get("ultimo_pagamento_em"),
+        trim_or_none(linha.get("telefone"), 20),
+        trim_or_none(linha.get("logradouro"), 150),
+        trim_or_none(linha.get("cidade"), 100),
+        trim_or_none(linha.get("uf"), 2),
+        cep[:8] if cep else None,
     )
 
 
