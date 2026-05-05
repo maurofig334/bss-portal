@@ -30,7 +30,10 @@ CREATE TABLE bss.sindicato (
     id_legado_uuid          CHAR(36) UNIQUE,
     razao_social            VARCHAR(255) NOT NULL,
     nome_fantasia           VARCHAR(255),
-    cnpj                    VARCHAR(14) UNIQUE,
+    -- CNPJ NÃO é UNIQUE: legado da GNB tem casos de mesmo CNPJ em sindicatos
+    -- diferentes (provavelmente duplicação de cadastro). Limpar manualmente
+    -- depois da migração e adicionar UNIQUE quando data estiver consistente.
+    cnpj                    VARCHAR(14),
     federacao               VARCHAR(255),
     categoria               VARCHAR(100),
     presidente              VARCHAR(255),
