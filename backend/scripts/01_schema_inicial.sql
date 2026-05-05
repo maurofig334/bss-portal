@@ -191,7 +191,9 @@ CREATE TABLE bss.empresa (
     id_legado_uuid          CHAR(36) UNIQUE,
     razao_social            VARCHAR(255) NOT NULL,
     nome_fantasia           VARCHAR(255),
-    cnpj                    VARCHAR(14) UNIQUE NOT NULL,
+    -- CNPJ NÃO é UNIQUE: legado tem dupes (cadastros duplicados, filiais com mesmo CNPJ).
+    -- Limpar manualmente depois e adicionar UNIQUE quando data estiver consistente.
+    cnpj                    VARCHAR(14),
     -- Endereço:
     logradouro              VARCHAR(150),
     numero                  VARCHAR(20),
