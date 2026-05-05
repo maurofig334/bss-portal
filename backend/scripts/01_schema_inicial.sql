@@ -203,8 +203,19 @@ CREATE TABLE bss.empresa (
     -- Contato/telefone:
     telefone                VARCHAR(20),
     -- Status operacional:
-    status                  VARCHAR(50) NOT NULL DEFAULT 'ativa',  -- ativa, suspensa, cancelada
-    regularidade            VARCHAR(50),    -- regular, atrasado, inadimplente
+    status                  VARCHAR(50) NOT NULL DEFAULT 'ativa',  -- ativa, suspensa, cancelada, inativa
+    -- Adimplência financeira (boletos pagos):
+    --   'adimplente'  = nenhum boleto vencido em aberto
+    --   'inadimplente'= 1+ boleto vencido sem pagamento
+    -- Calculável on-demand via VIEW bss.empresa_inadimplencia; campo aqui é
+    -- snapshot do legado / cache pra UIs rápidas.
+    adimplencia             VARCHAR(20),
+    -- Regularidade de submissão de planilhas mensais:
+    --   'regular'   = entregou todos os meses sem gap
+    --   'irregular' = falhou em algum mês passado
+    -- Calculável on-demand via VIEW bss.empresa_meses_faltantes; campo aqui é
+    -- snapshot do legado / cache pra UIs rápidas.
+    regularidade            VARCHAR(20),
     recebe_email_financeiro BOOLEAN NOT NULL DEFAULT TRUE,
     -- Cache de contagem (atualizado por job):
     qtd_trabalhadores_ativos    INT NOT NULL DEFAULT 0,

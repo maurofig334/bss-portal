@@ -53,11 +53,11 @@ SQL_UPSERT = """
         id_legado_uuid, razao_social, cnpj,
         logradouro, cidade, uf, cep,
         telefone,
-        status, regularidade, recebe_email_financeiro,
+        status, adimplencia, regularidade, recebe_email_financeiro,
         qtd_trabalhadores_ativos, qtd_trabalhadores_inativos, qtd_dependentes_ativos,
         ultimo_boleto_em, ultima_notificacao_em
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (id_legado_uuid) DO UPDATE
         SET razao_social    = EXCLUDED.razao_social,
             cnpj            = EXCLUDED.cnpj,
@@ -67,6 +67,7 @@ SQL_UPSERT = """
             cep             = EXCLUDED.cep,
             telefone        = EXCLUDED.telefone,
             status          = EXCLUDED.status,
+            adimplencia     = EXCLUDED.adimplencia,
             regularidade    = EXCLUDED.regularidade,
             recebe_email_financeiro     = EXCLUDED.recebe_email_financeiro,
             qtd_trabalhadores_ativos    = EXCLUDED.qtd_trabalhadores_ativos,
@@ -86,20 +87,56 @@ def _converter_bool(v) -> bool:
     return s in ("sim", "s", "yes", "y", "1", "true", "verdadeiro")
 
 
-def _normalizar_status(v) -> str:
-    """Normaliza statusempresa_c em valores padronizados."""
-    if not v:
+def _normalizar_status(ativa) -> str:
+    """
+    Normaliza ativa_c (operacional) em valores padronizados.
+    Legado tem strings tipo 'Ativa', 'Inativa', 'Cancelada' etc.
+    """
+    if not ativa:
         return "ativa"
-    s = str(v).strip().lower()
+    s = str(ativa).strip().lower()
     if "cancel" in s:
         return "cancelada"
     if "suspen" in s:
         return "suspensa"
+    if "inativ" in s or "desativ" in s:
+        return "inativa"
     return "ativa"
+
+
+def _normalizar_adimplencia(v) -> str | None:
+    """
+    statusempresa_c → 'adimplente' / 'inadimplente'.
+    Adimplente = não tem boleto vencido em aberto.
+    """
+    if not v:
+        return None
+    s = str(v).strip().lower()
+    if "inadimp" in s:
+        return "inadimplente"
+    if "adimp" in s:
+        return "adimplente"
+    return s[:20]
+
+
+def _normalizar_regularidade(v) -> str | None:
+    """
+    regularidade_c → 'regular' / 'irregular'.
+    Regular = empresa entregou planilha todos os meses sem gap.
+    """
+    if not v:
+        return None
+    s = str(v).strip().lower()
+    if "irreg" in s:
+        return "irregular"
+    if "regular" in s:
+        return "regular"
+    return s[:20]
 
 
 def _converter(linha: dict) -> tuple:
     cnpj = so_digitos(linha.get("cnpj_raw"))
+    cep = so_digitos(linha.get("cep"))
     return (
         linha["uuid"],
         trim_or_none(linha["razao_social"], 255) or "(SEM NOME)",
@@ -107,10 +144,11 @@ def _converter(linha: dict) -> tuple:
         trim_or_none(linha.get("logradouro"), 150),
         trim_or_none(linha.get("cidade"), 100),
         trim_or_none(linha.get("uf"), 2),
-        so_digitos(linha.get("cep"))[:8] if so_digitos(linha.get("cep")) else None,
+        cep[:8] if cep else None,
         trim_or_none(linha.get("telefone"), 20),
-        _normalizar_status(linha.get("status")),
-        trim_or_none(linha.get("regularidade"), 50),
+        _normalizar_status(linha.get("ativa")),
+        _normalizar_adimplencia(linha.get("status")),       # statusempresa_c
+        _normalizar_regularidade(linha.get("regularidade")), # regularidade_c
         _converter_bool(linha.get("recebe_email")),
         int(linha.get("qtd_trab_ativos") or 0),
         int(linha.get("qtd_trab_inativos") or 0),
