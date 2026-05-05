@@ -447,7 +447,8 @@ CREATE TABLE bss.boleto (
     status                  VARCHAR(20) NOT NULL DEFAULT 'gerado',
                             -- 'gerado', 'enviado', 'pago', 'vencido', 'cancelado'
     tipo                    VARCHAR(50),
-    data_emissao            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- data_emissao: na migração legado tem alguns nulls; em produção sempre preenche.
+    data_emissao            TIMESTAMPTZ DEFAULT NOW(),
     data_vencimento         DATE,
     data_pagamento          DATE,
     -- Auditoria:
