@@ -119,10 +119,45 @@ def _carregar_mappings(pg_conn) -> tuple[dict, dict]:
     return empresa_map, sindicato_map
 
 
-def _converter(linha: dict, emp_map: dict, sind_map: dict) -> tuple:
+SQL_NN_TRAB_SINDICATO = """
+    SELECT
+        sindi_sindicatos_traba_trabalhadores_1traba_trabalhadores_idb AS trab_uuid,
+        sindi_sindicatos_traba_trabalhadores_1sindi_sindicatos_ida    AS sind_uuid
+    FROM sindi_sindicatos_traba_trabalhadores_1_c
+    WHERE deleted = 0
+    ORDER BY date_modified ASC
+"""
+
+
+def _carregar_trab_sindicato_nn(mysql_conn) -> dict[str, str]:
+    """
+    Carrega a relação N-N trabalhador↔sindicato do legado.
+    ORDER BY date_modified ASC garante que ao iterar, vínculos mais recentes
+    SOBRESCREVEM os antigos no dict — resultado final = último sindicato por trabalhador.
+    """
+    mapa: dict[str, str] = {}
+    with mysql_conn.cursor() as cur:
+        cur.execute(SQL_NN_TRAB_SINDICATO)
+        while True:
+            lote = cur.fetchmany(5000)
+            if not lote:
+                break
+            for r in lote:
+                mapa[r["trab_uuid"]] = r["sind_uuid"]
+    return mapa
+
+
+def _converter(
+    linha: dict,
+    emp_map: dict,
+    sind_map: dict,
+    trab_sind_nn: dict,
+) -> tuple:
     cpf = so_digitos(linha.get("cpf_raw"))
     cpf_titular = so_digitos(linha.get("cpf_titular"))
     cep = so_digitos(linha.get("cep"))
+    # Sindicato: prefere o que vem da cstm, fallback pra N-N (último vínculo).
+    uuid_sind = linha.get("uuid_sindicato") or trab_sind_nn.get(linha["uuid"])
     return (
         linha["uuid"],
         cpf[:11] if cpf else None,
@@ -130,7 +165,7 @@ def _converter(linha: dict, emp_map: dict, sind_map: dict) -> tuple:
         linha.get("data_nascimento"),
         linha.get("data_admissao"),
         emp_map.get(linha.get("uuid_empresa")),
-        sind_map.get(linha.get("uuid_sindicato")),
+        sind_map.get(uuid_sind),
         _normalizar_titularidade(linha.get("titularidade")),
         cpf_titular[:11] if cpf_titular else None,
         int(linha.get("qtd_dependentes") or 0),
@@ -154,6 +189,11 @@ def sync(dry_run: bool = False, limite: int | None = None) -> int:
         emp_map, sind_map = _carregar_mappings(pg_conn)
     print(f"  ✓ {len(emp_map)} empresas, {len(sind_map)} sindicatos em memória")
 
+    print("  carregando N-N trabalhador↔sindicato do legado...")
+    with get_mysql_connection() as mysql_conn:
+        trab_sind_nn = _carregar_trab_sindicato_nn(mysql_conn)
+    print(f"  ✓ {len(trab_sind_nn)} vínculos trabalhador→sindicato em memória")
+
     sql = SQL_LEGADO + (f" LIMIT {int(limite)}" if limite else "")
     prog = Progresso(total=None, nome="trabalhador")
     sem_empresa = 0
@@ -168,10 +208,12 @@ def sync(dry_run: bool = False, limite: int | None = None) -> int:
                 # Conta órfãos pra reportar no final
                 if linha.get("uuid_empresa") and linha["uuid_empresa"] not in emp_map:
                     sem_empresa += 1
-                if linha.get("uuid_sindicato") and linha["uuid_sindicato"] not in sind_map:
+                # Pra sindicato: olha o que será efetivamente usado (cstm OR N-N)
+                uuid_sind_efetivo = linha.get("uuid_sindicato") or trab_sind_nn.get(linha["uuid"])
+                if uuid_sind_efetivo and uuid_sind_efetivo not in sind_map:
                     sem_sindicato += 1
                 prog.tick()
-                yield _converter(linha, emp_map, sind_map)
+                yield _converter(linha, emp_map, sind_map, trab_sind_nn)
 
         if dry_run:
             for _ in converter_iter():
