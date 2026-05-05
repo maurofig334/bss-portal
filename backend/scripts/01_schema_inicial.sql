@@ -329,7 +329,9 @@ CREATE TABLE bss.trabalhador (
     criado_em               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     atualizado_em           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE UNIQUE INDEX idx_trab_cpf ON bss.trabalhador (cpf);
+-- CPF deveria ser único, mas legado da GNB tem dupes. Manter como índice
+-- (não-único) e limpar depois da migração.
+CREATE INDEX idx_trab_cpf ON bss.trabalhador (cpf);
 CREATE INDEX idx_trab_empresa ON bss.trabalhador (id_empresa_atual);
 CREATE INDEX idx_trab_sindicato ON bss.trabalhador (id_sindicato_atual);
 CREATE INDEX idx_trab_emp_sind ON bss.trabalhador (id_empresa_atual, id_sindicato_atual) WHERE situacao = 'ativo';

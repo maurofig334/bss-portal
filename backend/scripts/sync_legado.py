@@ -27,20 +27,22 @@ import time
 
 from app.sync import sindicato as sync_sindicato
 from app.sync import empresa as sync_empresa
+from app.sync import trabalhador as sync_trabalhador
 # (import dos demais aqui conforme implementarmos)
 
 
 # Mapa: nome CLI → função sync()
 TABELAS = {
-    "sindicato": sync_sindicato.sync,
-    "empresa":   sync_empresa.sync,
+    "sindicato":   sync_sindicato.sync,
+    "empresa":     sync_empresa.sync,
+    "trabalhador": sync_trabalhador.sync,
 }
 
 # Ordem recomendada quando rodar "todas"
 ORDEM_TODAS = [
     "sindicato",
     "empresa",
-    # "trabalhador",
+    "trabalhador",
     # "lista_mensal_item",
     # "boleto",
     # "processo",
