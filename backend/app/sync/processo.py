@@ -43,10 +43,8 @@ SQL_LEGADO = """
         c.account_id                        AS uuid_empresa,
         c.status                            AS status_legado,
         c.date_entered                      AS criado_em_legado,
-        cc.contact_id_c                     AS uuid_trabalhador,
-        cc.sindi_sindicatos_id1_c           AS uuid_sindicato,
         cc.base_base_territorial_id_c       AS uuid_base_territorial,
-        cc.tipodebeneficio_c                AS tipo_beneficio_nome,
+        cc.tipodebeneficio_c                AS tipo_beneficio_codigo,
         cc.liberalidade_c                   AS liberalidade,
         cc.rastreio_c                       AS codigo_rastreio_cartao,
         cc.causa_mortis_c                   AS causa_mortis,
@@ -122,29 +120,47 @@ def _slug(texto: str | None) -> str:
     return s.replace(" ", "_").replace("-", "_")
 
 
-# Mapa: status do legado (lower-stripped) → codigo no catálogo bss.status_processo
+# Mapa: códigos internos do SuiteCRM → catálogo bss.status_processo (chave em lower com underscore)
 STATUS_MAP = {
-    "em analise":             "em_analise",      # mantém pelos 8 registros antigos
-    "em aprovacao":           "em_aprovacao",
-    "documentacao conforme":  "documentacao_conforme",
-    "documentacao pendente":  "documentacao_pendente",
-    "confirmacao de dados":   "confirmacao_dados",
-    "irregularidade de dados":"irregularidade_dados",
-    "contribuicao pendente":  "contribuicao_pendente",
-    "aguardando informacao":  "aguardando_informacao",
-    "autorizado financeiro":  "autorizado_financeiro",
-    "cartao solicitado":      "cartao_solicitado",
-    "cartao em transporte":   "cartao_em_transporte",
-    "em andamento":           "em_andamento",
-    "beneficio finalizado":   "beneficio_finalizado",
-    "solicitacao cancelada":  "solicitacao_cancelada",
+    # Closed family
+    "closed_closed":           "beneficio_finalizado",   # 16k
+    "closed_rejected":         "solicitacao_cancelada",  # 758
+    "closed_financial_ok":     "autorizado_financeiro",  # 31
+    # Open family
+    "open_new":                "andamento_inicial",      # 5
+    "open_pending_input":      "documentacao_pendente",  # 200
+    "open_pending_aproving":   "em_aprovacao",           # 97
+    "open_documentation_ok":   "documentacao_conforme",  # 126
+    "open_pending_info":       "aguardando_informacao",  # 115
+    "open_pending_portion":    "contribuicao_pendente",  # 126
+    "open_waiting":            "confirmacao_dados",      # 33
+    "open_pending_payment":    "autorizado_financeiro",  # 50
+    "open_pending_sent":       "cartao_solicitado",      # 163
+    "open_payment_ongoing":    "em_andamento",           # 329
 }
 
 
 def _normalizar_status(v: str | None) -> str:
-    """status legado → codigo do catálogo bss.status_processo. Default 'andamento_inicial'."""
-    chave = _slug(v).replace("_", " ")
+    """status legado (códigos internos SuiteCRM) → catálogo bss.status_processo."""
+    if not v:
+        return "andamento_inicial"
+    chave = _slug(v)  # 'Closed_Closed' → 'closed_closed'; 'Open_Pending Input' → 'open_pending_input'
     return STATUS_MAP.get(chave, "andamento_inicial")
+
+
+# Códigos 2-letras do legado → codigo do catálogo bss.tipo_beneficio
+TIPO_BENEFICIO_MAP = {
+    "NA": "natalidade",
+    "FA": "falecimento",
+    "CM": "consulta_medica",
+    "AC": "acidente",
+    "AD": "acionamento_funeral",
+    "EX": "exame",
+    "RE": "reembolso_rescisao",
+    "IN": "incapacitacao",
+    "BS": "brinde_sindicato",
+    "AU": "auxilio_creche",
+}
 
 
 def _normalizar_liberalidade(v: str | None) -> str | None:
@@ -161,8 +177,8 @@ def _normalizar_liberalidade(v: str | None) -> str | None:
     return s[:20]
 
 
-def _carregar_mappings(pg_conn, mysql_conn) -> tuple[dict, dict, dict, dict, dict]:
-    """Pré-carrega UUID → ID pra empresa, sindicato, trabalhador, tipo_beneficio + base_territorial."""
+def _carregar_mappings(pg_conn) -> tuple[dict, dict, dict, dict, dict]:
+    """Pré-carrega UUID → ID (BSS) pra empresa, sindicato, trabalhador, base_territorial + tipo_beneficio (codigo→id)."""
     emp_map: dict[str, int] = {}
     sind_map: dict[str, int] = {}
     trab_map: dict[str, int] = {}
@@ -189,16 +205,60 @@ def _carregar_mappings(pg_conn, mysql_conn) -> tuple[dict, dict, dict, dict, dic
     return emp_map, sind_map, trab_map, bt_map, tipo_map
 
 
-def _converter(linha: dict, emp_map, sind_map, trab_map, bt_map, tipo_map) -> tuple:
+def _carregar_case_to_trabalhador(mysql_conn) -> dict[str, str]:
+    """N-N traba_trabalhadores_cases_1_c → mapa case_uuid → trabalhador_uuid."""
+    sql = """
+        SELECT
+            traba_trabalhadores_cases_1cases_idb              AS case_uuid,
+            traba_trabalhadores_cases_1traba_trabalhadores_ida AS trab_uuid
+        FROM traba_trabalhadores_cases_1_c
+        WHERE deleted = 0
+    """
+    m: dict[str, str] = {}
+    with mysql_conn.cursor() as cur:
+        cur.execute(sql)
+        for r in cur.fetchall():
+            m[r["case_uuid"]] = r["trab_uuid"]
+    return m
+
+
+def _carregar_case_to_sindicato(mysql_conn) -> dict[str, str]:
+    """N-N sindi_sindicatos_cases_1_c → mapa case_uuid → sindicato_uuid."""
+    sql = """
+        SELECT
+            sindi_sindicatos_cases_1cases_idb         AS case_uuid,
+            sindi_sindicatos_cases_1sindi_sindicatos_ida AS sind_uuid
+        FROM sindi_sindicatos_cases_1_c
+        WHERE deleted = 0
+    """
+    m: dict[str, str] = {}
+    with mysql_conn.cursor() as cur:
+        cur.execute(sql)
+        for r in cur.fetchall():
+            m[r["case_uuid"]] = r["sind_uuid"]
+    return m
+
+
+def _converter(
+    linha: dict,
+    emp_map, sind_map, trab_map, bt_map, tipo_map,
+    case_to_trab, case_to_sind,
+) -> tuple:
     cep = so_digitos(linha.get("benef_cep"))
     cpf_benef = so_digitos(linha.get("beneficiario_cpf"))
-    tipo_codigo = _slug(linha.get("tipo_beneficio_nome"))
+    # Tipo: legado tem código 2-letras (NA, FA, CM...) → mapa pra slug do catálogo
+    tipo_codigo_legado = (linha.get("tipo_beneficio_codigo") or "").strip().upper()
+    tipo_codigo = TIPO_BENEFICIO_MAP.get(tipo_codigo_legado, "")
+    # Trabalhador e sindicato vêm das N-Ns dedicadas
+    case_uuid = linha["uuid"]
+    uuid_trab = case_to_trab.get(case_uuid)
+    uuid_sind = case_to_sind.get(case_uuid)
     return (
-        linha["uuid"],
+        case_uuid,
         int(linha["numero_processo"]) if linha.get("numero_processo") is not None else None,
         emp_map.get(linha.get("uuid_empresa")),
-        sind_map.get(linha.get("uuid_sindicato")),
-        trab_map.get(linha.get("uuid_trabalhador")),
+        sind_map.get(uuid_sind),
+        trab_map.get(uuid_trab),
         tipo_map.get(tipo_codigo),
         _normalizar_status(linha.get("status_legado")),
         trim_or_none(linha.get("situacao_acionamento"), 50),
@@ -231,13 +291,19 @@ def _converter(linha: dict, emp_map, sind_map, trab_map, bt_map, tipo_map) -> tu
 def sync(dry_run: bool = False, limite: int | None = None) -> int:
     print(f"\n=== Sync PROCESSO ({'dry-run' if dry_run else 'gravação'}) ===")
 
-    print("  carregando mapeamentos UUID→ID...")
-    with get_mysql_connection() as mysql_conn, get_pg_connection() as pg_conn:
-        emp_map, sind_map, trab_map, bt_map, tipo_map = _carregar_mappings(pg_conn, mysql_conn)
+    print("  carregando mapeamentos UUID→ID do BSS...")
+    with get_pg_connection() as pg_conn:
+        emp_map, sind_map, trab_map, bt_map, tipo_map = _carregar_mappings(pg_conn)
     print(
         f"  ✓ {len(emp_map)} empresas, {len(sind_map)} sindicatos, "
         f"{len(trab_map)} trabalhadores, {len(tipo_map)} tipos de benefício"
     )
+
+    print("  carregando N-Ns do legado (case→trabalhador, case→sindicato)...")
+    with get_mysql_connection() as mysql_conn:
+        case_to_trab = _carregar_case_to_trabalhador(mysql_conn)
+        case_to_sind = _carregar_case_to_sindicato(mysql_conn)
+    print(f"  ✓ {len(case_to_trab)} vínculos case→trab, {len(case_to_sind)} case→sind")
 
     sql = SQL_LEGADO + (f" LIMIT {int(limite)}" if limite else "")
     prog = Progresso(total=None, nome="processo")
@@ -248,7 +314,11 @@ def sync(dry_run: bool = False, limite: int | None = None) -> int:
                 if dry_run and prog.contador < 3:
                     print(f"  amostra: {linha}")
                 prog.tick()
-                yield _converter(linha, emp_map, sind_map, trab_map, bt_map, tipo_map)
+                yield _converter(
+                    linha,
+                    emp_map, sind_map, trab_map, bt_map, tipo_map,
+                    case_to_trab, case_to_sind,
+                )
 
         if dry_run:
             for _ in converter_iter():
