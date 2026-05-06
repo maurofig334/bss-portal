@@ -1,5 +1,7 @@
 """
 Sincroniza processos de benefício: cases + cases_cstm → bss.processo_beneficio
+Mapeamento confirmado em produção (2026-05-05): 18192 processos com 100% tipo,
+99.99% empresa+sindicato, 99.97% trabalhador.
 
 Volume: ~18k registros. Tempo esperado: <30s.
 
@@ -68,7 +70,8 @@ SQL_LEGADO = """
         cc.dataobito_c                      AS data_obito,
         cc.situacaoacionamento_c            AS situacao_acionamento,
         cc.forma_pagamento_c                AS forma_pagamento,
-        cc.dados_revisados_c                AS dados_revisados
+        cc.dados_revisados_c                AS dados_revisados,
+        cc.ultima_modificacao_portal_c      AS ultima_atualizacao_portal_em
     FROM cases c
     LEFT JOIN cases_cstm cc ON cc.id_c = c.id
     WHERE c.deleted = 0
@@ -88,10 +91,11 @@ SQL_UPSERT = """
         beneficiario_endereco_cep,
         qtd_bebes, data_obito, data_evento, data_finalizacao,
         forma_pagamento, codigo_rastreio_cartao, vencimento_cartao_em,
-        chat_descricao, dados_revisados
+        chat_descricao, dados_revisados,
+        ultima_atualizacao_portal_em
     )
     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (id_legado_uuid) DO UPDATE
         SET numero_processo  = EXCLUDED.numero_processo,
             id_empresa       = EXCLUDED.id_empresa,
@@ -106,6 +110,7 @@ SQL_UPSERT = """
             beneficiario_cpf = EXCLUDED.beneficiario_cpf,
             data_evento      = EXCLUDED.data_evento,
             data_finalizacao = EXCLUDED.data_finalizacao,
+            ultima_atualizacao_portal_em = EXCLUDED.ultima_atualizacao_portal_em,
             atualizado_em    = NOW()
 """
 
@@ -285,6 +290,7 @@ def _converter(
         linha.get("vencimento_cartao_em"),
         linha.get("chat_descricao"),
         bool(linha.get("dados_revisados")) if linha.get("dados_revisados") else False,
+        linha.get("ultima_atualizacao_portal_em"),
     )
 
 

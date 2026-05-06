@@ -554,10 +554,15 @@ CREATE TABLE bss.processo_beneficio (
     -- Auditoria:
     chat_descricao          TEXT,
     dados_revisados         BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Última ação do CLIENTE no portal (clicou, anexou, comentou).
+    -- Usado pra detectar "interação sem resposta": se este timestamp for mais
+    -- recente que a última ação do staff, há cliente esperando resposta.
+    ultima_atualizacao_portal_em TIMESTAMPTZ,
     criado_em               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     atualizado_em           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX idx_proc_status ON bss.processo_beneficio (status);
+CREATE INDEX idx_proc_ult_portal ON bss.processo_beneficio (ultima_atualizacao_portal_em DESC) WHERE ultima_atualizacao_portal_em IS NOT NULL;
 CREATE INDEX idx_proc_trabalhador ON bss.processo_beneficio (id_trabalhador);
 CREATE INDEX idx_proc_sindicato ON bss.processo_beneficio (id_sindicato);
 CREATE INDEX idx_proc_empresa ON bss.processo_beneficio (id_empresa);
