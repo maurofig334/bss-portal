@@ -31,16 +31,18 @@ from app.sync import trabalhador as sync_trabalhador
 from app.sync import boleto as sync_boleto
 from app.sync import boleto_item as sync_boleto_item
 from app.sync import processo as sync_processo
+from app.sync import processo_mensagem as sync_processo_mensagem
 
 
 # Mapa: nome CLI → função sync()
 TABELAS = {
-    "sindicato":   sync_sindicato.sync,
-    "empresa":     sync_empresa.sync,
-    "trabalhador": sync_trabalhador.sync,
-    "boleto":      sync_boleto.sync,
-    "boleto_item": sync_boleto_item.sync,
-    "processo":    sync_processo.sync,
+    "sindicato":          sync_sindicato.sync,
+    "empresa":            sync_empresa.sync,
+    "trabalhador":        sync_trabalhador.sync,
+    "boleto":             sync_boleto.sync,
+    "boleto_item":        sync_boleto_item.sync,
+    "processo":           sync_processo.sync,
+    "processo_mensagem":  sync_processo_mensagem.sync,
 }
 
 # Ordem recomendada quando rodar "todas"
@@ -51,6 +53,7 @@ ORDEM_TODAS = [
     "boleto",
     "boleto_item",
     "processo",
+    "processo_mensagem",
 ]
 
 

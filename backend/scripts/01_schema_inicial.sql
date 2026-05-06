@@ -714,6 +714,31 @@ CREATE UNIQUE INDEX uq_pdoc_proc_tipo_versao ON bss.processo_documento (id_proce
 
 
 -- ============================================================================
+-- 19b. PROCESSO_MENSAGEM (chat entre cliente e staff sobre o processo)
+-- ============================================================================
+-- Equivalente ao aop_case_updates do legado (33k+ mensagens).
+-- Cada linha = 1 mensagem (PENDENCIA, esclarecimento, dúvida, resposta, etc.).
+-- A flag `interno` controla se o cliente vê (false = portal mostra; true = só staff).
+CREATE TABLE bss.processo_mensagem (
+    id              BIGSERIAL PRIMARY KEY,
+    id_legado_uuid  CHAR(36) UNIQUE,
+    id_processo     BIGINT NOT NULL REFERENCES bss.processo_beneficio(id) ON DELETE CASCADE,
+    -- Quem mandou (bss_users.id; NULL durante migração se user legado não foi mapeado):
+    id_usuario      INT,
+    -- Texto:
+    titulo          VARCHAR(255),
+    corpo           TEXT NOT NULL,
+    -- Visibilidade:
+    interno         BOOLEAN NOT NULL DEFAULT FALSE,   -- true = só staff vê (não vai pro portal cliente)
+    -- Auditoria:
+    criado_em       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    atualizado_em   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_pmsg_processo ON bss.processo_mensagem (id_processo, criado_em);
+CREATE INDEX idx_pmsg_usuario ON bss.processo_mensagem (id_usuario) WHERE id_usuario IS NOT NULL;
+
+
+-- ============================================================================
 -- 19. PROCESSO_ANDAMENTO (audit trail das transições de status)
 -- ============================================================================
 -- Cada mudança no status do processo gera 1 linha aqui — quem, quando, comentário.
