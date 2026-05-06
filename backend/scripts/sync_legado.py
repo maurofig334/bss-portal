@@ -30,7 +30,7 @@ from app.sync import empresa as sync_empresa
 from app.sync import trabalhador as sync_trabalhador
 from app.sync import boleto as sync_boleto
 from app.sync import boleto_item as sync_boleto_item
-# (import dos demais aqui conforme implementarmos)
+from app.sync import processo as sync_processo
 
 
 # Mapa: nome CLI → função sync()
@@ -40,6 +40,7 @@ TABELAS = {
     "trabalhador": sync_trabalhador.sync,
     "boleto":      sync_boleto.sync,
     "boleto_item": sync_boleto_item.sync,
+    "processo":    sync_processo.sync,
 }
 
 # Ordem recomendada quando rodar "todas"
@@ -49,7 +50,7 @@ ORDEM_TODAS = [
     "trabalhador",
     "boleto",
     "boleto_item",
-    # "processo",
+    "processo",
 ]
 
 

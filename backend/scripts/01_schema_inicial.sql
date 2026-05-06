@@ -494,15 +494,16 @@ CREATE TABLE bss.processo_beneficio (
     id_legado_uuid          CHAR(36) UNIQUE,
     -- numero_processo = case_number do SuiteCRM (sequencial, INTERNO — não exibido ao cliente).
     -- Mantido só pra rastreabilidade da migração; novos processos não precisam preencher.
-    numero_processo         BIGINT UNIQUE,
+    numero_processo         BIGINT,
     -- protocolo = ID que o cliente vê (formato AAMMDD + 3 dígitos sequenciais por dia).
-    -- Ex: 260504001 = 1º protocolo de 2026-05-04. Gerar via bss.gerar_protocolo() abaixo.
-    protocolo               VARCHAR(9) UNIQUE NOT NULL,
-    -- Quem é o beneficiário:
-    id_trabalhador          BIGINT NOT NULL REFERENCES bss.trabalhador(id),
-    id_sindicato            BIGINT NOT NULL REFERENCES bss.sindicato(id),
-    id_empresa              BIGINT NOT NULL REFERENCES bss.empresa(id),
-    id_tipo_beneficio       SMALLINT NOT NULL REFERENCES bss.tipo_beneficio(id),
+    -- NULL durante migração — gerar via bss.gerar_protocolo() pra novos processos.
+    protocolo               VARCHAR(9) UNIQUE,
+    -- FKs nullable durante migração de legado (registros órfãos esperados);
+    -- novos processos no BSS sempre preenchem:
+    id_trabalhador          BIGINT REFERENCES bss.trabalhador(id),
+    id_sindicato            BIGINT REFERENCES bss.sindicato(id),
+    id_empresa              BIGINT REFERENCES bss.empresa(id),
+    id_tipo_beneficio       SMALLINT REFERENCES bss.tipo_beneficio(id),
     id_base_territorial     BIGINT REFERENCES bss.base_territorial(id),
     -- Status do processo (workflow — ver bss.processo_andamento p/ histórico):
     status                  VARCHAR(30) NOT NULL DEFAULT 'andamento_inicial',
