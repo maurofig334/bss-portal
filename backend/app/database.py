@@ -41,7 +41,14 @@ def get_pg_connection() -> Generator[psycopg.Connection, None, None]:
 
 def get_mysql_connection():
     """
-    Abre conexão com o MySQL do SuiteCRM (legado, somente leitura).
+    Abre conexão com o MySQL do SuiteCRM legado em modo READ-ONLY.
+
+    SEGURANÇA: este banco é a base de produção da GNB. Todas as queries
+    feitas por este projeto são SELECT — mas pra blindar contra erros,
+    a sessão MySQL é configurada como READ ONLY assim que conecta:
+      SET SESSION TRANSACTION READ ONLY;
+    Qualquer INSERT/UPDATE/DELETE/DDL aciona erro 1792.
+
     Importa pymysql só quando chamado, pra evitar dependência se não usado.
     """
     if not settings.MYSQL_HOST:
@@ -50,7 +57,7 @@ def get_mysql_connection():
         )
     import pymysql
     import pymysql.cursors
-    return pymysql.connect(
+    conn = pymysql.connect(
         host=settings.MYSQL_HOST,
         port=settings.MYSQL_PORT,
         database=settings.MYSQL_DB,
@@ -58,4 +65,15 @@ def get_mysql_connection():
         password=settings.MYSQL_PASSWORD,
         charset="utf8mb4",
         cursorclass=pymysql.cursors.DictCursor,
+        autocommit=True,
     )
+    # Blindagem: força a sessão a ser READ ONLY no servidor.
+    # Qualquer escrita aciona ERROR 1792: "Cannot execute statement in a READ ONLY transaction."
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SET SESSION TRANSACTION READ ONLY")
+    except Exception:
+        # Se o servidor MySQL não suportar (versão antiga), não bloqueia o uso —
+        # nosso código segue só rodando SELECT mesmo.
+        pass
+    return conn

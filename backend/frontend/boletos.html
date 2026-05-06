@@ -2,19 +2,18 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Trabalhadores — BSS</title>
+  <title>Boletos — BSS</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-50">
-
   <div class="flex min-h-screen">
     <aside id="sidebar" class="w-56 flex-shrink-0"></aside>
 
     <div class="flex-1 flex flex-col">
       <header class="bg-white border-b border-slate-200">
         <div class="px-6 py-4 flex items-center justify-between">
-          <h1 class="text-xl font-semibold text-slate-800">Trabalhadores</h1>
+          <h1 class="text-xl font-semibold text-slate-800">Boletos</h1>
           <div class="flex items-center gap-3 text-sm">
             <span id="usuario-info" class="text-slate-500">—</span>
             <button onclick="logout()" class="text-slate-500 hover:text-slate-800">Sair</button>
@@ -23,32 +22,29 @@
       </header>
 
       <main class="flex-1 px-6 py-6 max-w-7xl">
-
         <section class="bg-white rounded-lg border border-slate-200 p-4 mb-4">
           <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-            <div class="md:col-span-5">
-              <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Buscar (nome ou CPF)</label>
-              <input id="f-busca" type="text" placeholder="Ex: João, ou 12345678901"
-                     class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                     oninput="agendarBusca()">
+            <div class="md:col-span-4">
+              <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Buscar (empresa / CNPJ / nosso número)</label>
+              <input id="f-busca" type="text" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg" oninput="agendarBusca()">
             </div>
             <div class="md:col-span-2">
-              <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Situação</label>
-              <select id="f-situacao" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg" onchange="recarregar()">
-                <option value="">Todas</option>
-                <option value="ativo">Ativo</option>
-                <option value="inativo">Inativo</option>
-                <option value="carencia">Carência</option>
+              <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</label>
+              <select id="f-status" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg" onchange="recarregar()">
+                <option value="">Todos</option>
+                <option value="gerado">Gerado</option>
+                <option value="enviado">Enviado</option>
+                <option value="pago">Pago</option>
+                <option value="vencido">Vencido</option>
+                <option value="cancelado">Cancelado</option>
               </select>
             </div>
-            <div class="md:col-span-2">
-              <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">UF</label>
-              <input id="f-uf" type="text" maxlength="2"
-                     class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg uppercase"
-                     placeholder="SP" oninput="this.value=this.value.toUpperCase(); agendarBusca()">
+            <div class="md:col-span-3">
+              <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mês de referência</label>
+              <input id="f-mes" type="month" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg" onchange="recarregar()">
             </div>
             <div class="md:col-span-3">
-              <button onclick="limparFiltros()" class="px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded-lg">Limpar filtros</button>
+              <button onclick="limparFiltros()" class="px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded-lg">Limpar</button>
             </div>
           </div>
         </section>
@@ -63,13 +59,15 @@
             <table class="min-w-full text-sm">
               <thead class="bg-slate-50 text-xs text-slate-600 uppercase tracking-wider">
                 <tr>
-                  <th class="px-3 py-2 text-left">CPF</th>
-                  <th class="px-3 py-2 text-left">Nome</th>
+                  <th class="px-3 py-2 text-left">Nº</th>
                   <th class="px-3 py-2 text-left">Empresa</th>
                   <th class="px-3 py-2 text-left">Sindicato</th>
-                  <th class="px-3 py-2 text-center">UF</th>
-                  <th class="px-3 py-2 text-center">Situação</th>
-                  <th class="px-3 py-2 text-right">Último pgto</th>
+                  <th class="px-3 py-2 text-center">Mês ref.</th>
+                  <th class="px-3 py-2 text-right">Trab.</th>
+                  <th class="px-3 py-2 text-right">Valor</th>
+                  <th class="px-3 py-2 text-center">Status</th>
+                  <th class="px-3 py-2 text-right">Vencimento</th>
+                  <th class="px-3 py-2 text-right">Pagamento</th>
                 </tr>
               </thead>
               <tbody id="tbody"></tbody>
@@ -83,7 +81,7 @@
 
   <script src="/app/js/api.js"></script>
   <script src="/app/js/sidebar.js"></script>
-  <script>renderizarSidebar("trabalhadores");</script>
-  <script src="/app/js/trabalhadores.js"></script>
+  <script>renderizarSidebar("boletos");</script>
+  <script src="/app/js/boletos.js"></script>
 </body>
 </html>

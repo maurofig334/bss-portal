@@ -867,6 +867,105 @@ LEFT JOIN bss.empresa   e ON e.id = t.id_empresa_atual
 LEFT JOIN bss.sindicato s ON s.id = t.id_sindicato_atual;
 
 
+-- VIEW: empresa com cache de trabalhadores (atalho pras telas de listagem)
+CREATE OR REPLACE VIEW bss.v_empresa AS
+SELECT
+    e.id,
+    e.cnpj,
+    e.razao_social,
+    e.nome_fantasia,
+    e.cidade,
+    e.uf,
+    e.cep,
+    e.telefone,
+    e.status,
+    e.adimplencia,
+    e.regularidade,
+    e.recebe_email_financeiro,
+    e.qtd_trabalhadores_ativos,
+    e.qtd_trabalhadores_inativos,
+    e.qtd_dependentes_ativos,
+    e.ultimo_boleto_em,
+    e.ultima_notificacao_em,
+    e.criado_em,
+    e.atualizado_em
+FROM bss.empresa e;
+
+
+-- VIEW: boleto com empresa e sindicato resolvidos
+CREATE OR REPLACE VIEW bss.v_boleto AS
+SELECT
+    b.id,
+    b.numero_boleto,
+    b.id_empresa,
+    e.razao_social               AS empresa,
+    e.cnpj                       AS empresa_cnpj,
+    b.id_sindicato,
+    s.razao_social               AS sindicato,
+    b.mes_referencia,
+    b.qtd_trabalhadores,
+    b.qtd_dependentes,
+    b.valor_total,
+    b.banco,
+    b.nosso_numero,
+    b.linha_digitavel,
+    b.link_pdf,
+    b.status,
+    b.tipo,
+    b.data_emissao,
+    b.data_vencimento,
+    b.data_pagamento,
+    b.criado_em,
+    b.atualizado_em
+FROM bss.boleto b
+LEFT JOIN bss.empresa   e ON e.id = b.id_empresa
+LEFT JOIN bss.sindicato s ON s.id = b.id_sindicato;
+
+
+-- VIEW: processo de benefício com empresa, sindicato, trabalhador e tipo resolvidos
+CREATE OR REPLACE VIEW bss.v_processo AS
+SELECT
+    p.id,
+    p.numero_processo,
+    p.protocolo,
+    p.status,
+    sp.nome                           AS status_nome,
+    sp.categoria                      AS status_categoria,
+    sp.cor_hex                        AS status_cor,
+    p.id_empresa,
+    e.razao_social                    AS empresa,
+    e.cnpj                            AS empresa_cnpj,
+    p.id_sindicato,
+    s.razao_social                    AS sindicato,
+    p.id_trabalhador,
+    t.cpf                             AS trabalhador_cpf,
+    t.nome_completo                   AS trabalhador_nome,
+    p.id_tipo_beneficio,
+    tb.nome                           AS tipo_beneficio,
+    tb.codigo                         AS tipo_beneficio_codigo,
+    p.beneficiario_nome,
+    p.beneficiario_cpf,
+    p.beneficiario_grau_parentesco,
+    p.liberalidade,
+    p.data_evento,
+    p.data_obito,
+    p.data_finalizacao,
+    p.forma_pagamento,
+    p.codigo_rastreio_cartao,
+    p.vencimento_cartao_em,
+    p.qtd_bebes,
+    p.dados_revisados,
+    p.ultima_atualizacao_portal_em,
+    p.criado_em,
+    p.atualizado_em
+FROM bss.processo_beneficio p
+LEFT JOIN bss.empresa         e  ON e.id  = p.id_empresa
+LEFT JOIN bss.sindicato       s  ON s.id  = p.id_sindicato
+LEFT JOIN bss.trabalhador     t  ON t.id  = p.id_trabalhador
+LEFT JOIN bss.tipo_beneficio  tb ON tb.id = p.id_tipo_beneficio
+LEFT JOIN bss.status_processo sp ON sp.codigo = p.status;
+
+
 -- VIEW: histórico do trabalhador (todas as empresas/sindicatos por onde passou)
 CREATE OR REPLACE VIEW bss.trabalhador_historico AS
 SELECT
