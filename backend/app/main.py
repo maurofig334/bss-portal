@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .version import VERSION
 from .auth import router as auth_router
+from .trabalhador_router import router as trabalhador_router
 from .database import get_pg_connection
 
 
@@ -42,6 +43,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(trabalhador_router)
 
 # Arquivos estáticos do frontend em /app/
 app.mount("/app", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

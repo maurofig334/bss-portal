@@ -834,6 +834,39 @@ GROUP BY t.id_empresa_atual, t.id_sindicato_atual;
 -- Para a empresa saber "em quais sindicatos meus trabalhadores estão":
 --   SELECT * FROM bss.empresa_sindicato_ativo WHERE id_empresa = ?
 
+-- VIEW: trabalhador com nomes da empresa e sindicato resolvidos
+-- (uso típico: tela de listagem com busca/filtro). Postgres planeja muito bem
+-- mesmo com 600k linhas; sem necessidade de materialized view.
+CREATE OR REPLACE VIEW bss.v_trabalhador AS
+SELECT
+    t.id,
+    t.cpf,
+    t.nome_completo,
+    t.titularidade,
+    t.cpf_titular,
+    t.situacao,
+    t.data_nascimento,
+    t.data_admissao,
+    t.data_demissao,
+    t.telefone,
+    t.email,
+    t.cidade                       AS trab_cidade,
+    t.uf                           AS trab_uf,
+    t.id_empresa_atual,
+    e.razao_social                 AS empresa,
+    e.cnpj                         AS empresa_cnpj,
+    t.id_sindicato_atual,
+    s.razao_social                 AS sindicato,
+    s.categoria                    AS sindicato_categoria,
+    t.mes_ultimo_vinculo,
+    t.ultimo_pagamento_em,
+    t.qtd_dependentes_ativos,
+    t.atualizado_em
+FROM bss.trabalhador t
+LEFT JOIN bss.empresa   e ON e.id = t.id_empresa_atual
+LEFT JOIN bss.sindicato s ON s.id = t.id_sindicato_atual;
+
+
 -- VIEW: histórico do trabalhador (todas as empresas/sindicatos por onde passou)
 CREATE OR REPLACE VIEW bss.trabalhador_historico AS
 SELECT
