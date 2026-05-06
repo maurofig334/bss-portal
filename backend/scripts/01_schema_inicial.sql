@@ -469,7 +469,9 @@ CREATE TABLE bss.boleto_item (
     id                      BIGSERIAL PRIMARY KEY,
     id_boleto               BIGINT NOT NULL REFERENCES bss.boleto(id) ON DELETE CASCADE,
     id_trabalhador          BIGINT NOT NULL REFERENCES bss.trabalhador(id),
-    id_sindicato            BIGINT NOT NULL REFERENCES bss.sindicato(id),  -- redundante (= boleto.id_sindicato), facilita queries
+    -- id_sindicato: nullable durante migração (trabalhadores órfãos no legado).
+    -- Em produção sempre preenche (= boleto.id_sindicato).
+    id_sindicato            BIGINT REFERENCES bss.sindicato(id),
     mes_referencia          DATE NOT NULL,        -- redundante mas crítico pra performance
     -- Snapshot de valor (se sindicato mudar taxa, esse fica imutável).
     -- Default 0: na migração não temos histórico, novos itens preenchem corretamente.
