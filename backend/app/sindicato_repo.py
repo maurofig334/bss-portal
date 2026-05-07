@@ -94,7 +94,7 @@ def listar(
             s.qtd_trabalhadores_inativos,
             s.atualizado_em,
             -- Tipo de sindicato: FEMACO ou NÃO FEMACO (derivado da federação):
-            CASE WHEN UPPER(TRIM(COALESCE(s.federacao, ''))) LIKE '%FEMACO%'
+            CASE WHEN UPPER(TRIM(COALESCE(s.federacao, ''))) LIKE '%%FEMACO%%'
                  THEN 'FEMACO' ELSE 'NÃO FEMACO' END AS tipo_sindicato,
             -- Vencimento do mês corrente (mantido pra usos futuros — detalhe):
             pb.{col_venc} AS dia_vencimento_mes,
