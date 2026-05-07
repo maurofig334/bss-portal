@@ -93,15 +93,24 @@ def listar(
             s.qtd_trabalhadores_ativos,
             s.qtd_trabalhadores_inativos,
             s.atualizado_em,
-            -- Vencimento do mês corrente (do parametros_boleto):
+            -- Tipo de sindicato: FEMACO ou NÃO FEMACO (derivado da federação):
+            CASE WHEN UPPER(TRIM(COALESCE(s.federacao, ''))) LIKE '%FEMACO%'
+                 THEN 'FEMACO' ELSE 'NÃO FEMACO' END AS tipo_sindicato,
+            -- Vencimento do mês corrente (mantido pra usos futuros — detalhe):
             pb.{col_venc} AS dia_vencimento_mes,
             pb.tipo       AS tipo_parametro,
             (pb.id IS NOT NULL) AS tem_parametro,
-            -- Quantos tipos de benefício o sindicato oferece (cadastrados em valor_beneficio_sindicato):
-            COALESCE(vb.qtd_tipos_beneficio, 0) AS qtd_tipos_beneficio
+            pb.nome       AS parametro_nome,
+            -- Tarifa do titular + tarifa dependente (núcleo da coluna "Parâmetro" da grid):
+            pb.tarifa_titular,
+            pb.tarifa_dependente,
+            pb.aceita_dependentes,
+            -- Quantos tipos de benefício o sindicato oferece e soma das indenizações:
+            COALESCE(vb.qtd_tipos_beneficio, 0)   AS qtd_tipos_beneficio,
+            COALESCE(vb.valor_total_indenizacoes, 0) AS valor_total_indenizacoes
         FROM bss.sindicato s
         LEFT JOIN LATERAL (
-            SELECT id, {col_venc}, tipo, tarifa_titular,
+            SELECT id, {col_venc}, tipo, nome, tarifa_titular,
                    tarifa_dependente, aceita_dependentes
               FROM bss.parametros_boleto
              WHERE id_sindicato = s.id AND ativo = TRUE
@@ -139,7 +148,7 @@ def listar(
     }
 
 
-def buscar_por_id(id_sindicato: int) -> dict[str, Any] | None:
+def buscar_por_id(id_sindicato: int) -> dict[str, object] | None:
     sql = "SELECT * FROM bss.sindicato WHERE id = %s"
     with get_pg_connection() as conn:
         with conn.cursor() as cur:

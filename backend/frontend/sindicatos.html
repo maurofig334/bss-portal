@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Sindicatos — BSS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50">
+  <div class="flex min-h-screen">
+    <aside id="sidebar" class="w-56 flex-shrink-0"></aside>
+
+    <div class="flex-1 flex flex-col">
+      <header class="bg-white border-b border-slate-200">
+        <div class="px-6 py-4 flex items-center justify-between">
+          <h1 class="text-xl font-semibold text-slate-800">Sindicatos</h1>
+          <div class="flex items-center gap-3 text-sm">
+            <span id="usuario-info" class="text-slate-500">—</span>
+            <button onclick="logout()" class="text-slate-500 hover:text-slate-800">Sair</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="flex-1 px-6 py-6 max-w-[1400px]">
+        <section class="bg-white rounded-lg border border-slate-200 p-4 mb-4">
+          <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+            <div class="md:col-span-6">
+              <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Buscar (razão social, fantasia ou CNPJ)</label>
+              <input id="f-busca" type="text" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg" oninput="agendarBusca()">
+            </div>
+            <div class="md:col-span-4">
+              <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Em atendimento</label>
+              <select id="f-atend" class="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg" onchange="recarregar()">
+                <option value="">Todos</option>
+                <option value="true">Em atendimento</option>
+                <option value="false">Fora de atendimento</option>
+              </select>
+            </div>
+            <div class="md:col-span-2">
+              <button onclick="limparFiltros()" class="px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded-lg w-full">Limpar</button>
+            </div>
+          </div>
+        </section>
+
+        <div class="flex items-center justify-between mb-3 text-sm text-slate-600">
+          <div id="stats">—</div>
+          <div id="tempo" class="font-mono text-xs text-emerald-700"></div>
+        </div>
+
+        <section class="bg-white rounded-lg border border-slate-200 overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-50 text-xs text-slate-600 uppercase tracking-wider">
+                <tr>
+                  <th class="px-3 py-2 text-left">Sindicato</th>
+                  <th class="px-3 py-2 text-center">UF</th>
+                  <th class="px-3 py-2 text-right">Trab. Ativos</th>
+                  <th class="px-3 py-2 text-right">Trab. Inativos</th>
+                  <th class="px-3 py-2 text-right">Parâmetro</th>
+                  <th class="px-3 py-2 text-left">CNPJ</th>
+                  <th class="px-3 py-2 text-left">Categoria</th>
+                  <th class="px-3 py-2 text-center">Tipo de Sindicato</th>
+                  <th class="px-3 py-2 text-left">Federação</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+          <div id="paginacao" class="flex items-center justify-between p-3 border-t border-slate-200 text-sm"></div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="/app/js/api.js"></script>
+  <script src="/app/js/sidebar.js"></script>
+  <script>renderizarSidebar("sindicatos");</script>
+  <script src="/app/js/sindicatos.js"></script>
+</body>
+</html>

@@ -24,6 +24,7 @@ from .version import VERSION
 from .auth import router as auth_router
 from .trabalhador_router import router as trabalhador_router
 from .empresa_router import router as empresa_router
+from .sindicato_router import router as sindicato_router
 from .processo_router import router as processo_router
 from .boleto_router import router as boleto_router
 from .dashboard_router import router as dashboard_router
@@ -49,6 +50,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(trabalhador_router)
 app.include_router(empresa_router)
+app.include_router(sindicato_router)
 app.include_router(processo_router)
 app.include_router(boleto_router)
 app.include_router(dashboard_router)

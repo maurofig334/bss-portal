@@ -112,18 +112,19 @@ SQL_LEGADO = """
 
 SQL_UPSERT_PARAM = """
     INSERT INTO bss.parametros_boleto (
-        id_legado_uuid, id_sindicato,
+        id_legado_uuid, id_sindicato, nome,
         tarifa_titular, aceita_dependentes, tarifa_dependente, carencia_dependente_dias,
         vencimento_jan, vencimento_fev, vencimento_mar, vencimento_abr,
         vencimento_mai, vencimento_jun, vencimento_jul, vencimento_ago,
         vencimento_set, vencimento_out, vencimento_nov, vencimento_dez,
         banco_geracao_boleto, banco_boleto_dependente, tipo, ativo
     )
-    VALUES (%s, %s, %s, %s, %s, %s,
+    VALUES (%s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, TRUE)
     ON CONFLICT (id_sindicato) DO UPDATE
         SET id_legado_uuid           = EXCLUDED.id_legado_uuid,
+            nome                     = EXCLUDED.nome,
             tarifa_titular           = EXCLUDED.tarifa_titular,
             aceita_dependentes       = EXCLUDED.aceita_dependentes,
             tarifa_dependente        = EXCLUDED.tarifa_dependente,
@@ -229,6 +230,7 @@ def _row_to_param_tuple(row: dict, id_sindicato: int) -> tuple:
     return (
         row["param_uuid"],
         id_sindicato,
+        trim_or_none(row.get("param_nome"), 255),
         row.get("tarifa_titular"),
         _parse_aceita_dep(row.get("aceita_dependentes")),
         row.get("tarifa_dependente"),
