@@ -153,19 +153,9 @@ def _normalizar_status(v: str | None) -> str:
     return STATUS_MAP.get(chave, "andamento_inicial")
 
 
-# Códigos 2-letras do legado → codigo do catálogo bss.tipo_beneficio
-TIPO_BENEFICIO_MAP = {
-    "NA": "natalidade",
-    "FA": "falecimento",
-    "CM": "consulta_medica",
-    "AC": "acidente",
-    "AD": "acionamento_funeral",
-    "EX": "exame",
-    "RE": "reembolso_rescisao",
-    "IN": "incapacitacao",
-    "BS": "brinde_sindicato",
-    "AU": "auxilio_creche",
-}
+# Mapa códigos 2-letras (AC, FA, NA, ...) → tipo de benefício no BSS agora
+# vive em bss.tipo_beneficio.codigo_legado (vide migration 02). O dict é
+# montado em runtime por _carregar_mappings — admin gerencia pela tabela.
 
 
 def _normalizar_liberalidade(v: str | None) -> str | None:
@@ -203,9 +193,12 @@ def _carregar_mappings(pg_conn) -> tuple[dict, dict, dict, dict, dict]:
         cur.execute("SELECT id, id_legado_uuid FROM bss.base_territorial WHERE id_legado_uuid IS NOT NULL")
         for r in cur:
             bt_map[r["id_legado_uuid"]] = r["id"]
-        cur.execute("SELECT id, codigo FROM bss.tipo_beneficio")
+        cur.execute(
+            "SELECT id, codigo_legado FROM bss.tipo_beneficio "
+            "WHERE codigo_legado IS NOT NULL AND ativo"
+        )
         for r in cur:
-            tipo_map[r["codigo"]] = r["id"]
+            tipo_map[r["codigo_legado"]] = r["id"]
 
     return emp_map, sind_map, trab_map, bt_map, tipo_map
 
@@ -251,9 +244,9 @@ def _converter(
 ) -> tuple:
     cep = so_digitos(linha.get("benef_cep"))
     cpf_benef = so_digitos(linha.get("beneficiario_cpf"))
-    # Tipo: legado tem código 2-letras (NA, FA, CM...) → mapa pra slug do catálogo
+    # Tipo: legado tem código 2-letras (NA, FA, CM...). tipo_map agora é
+    # {codigo_legado → id}, populado de bss.tipo_beneficio.codigo_legado.
     tipo_codigo_legado = (linha.get("tipo_beneficio_codigo") or "").strip().upper()
-    tipo_codigo = TIPO_BENEFICIO_MAP.get(tipo_codigo_legado, "")
     # Trabalhador e sindicato vêm das N-Ns dedicadas
     case_uuid = linha["uuid"]
     uuid_trab = case_to_trab.get(case_uuid)
@@ -264,7 +257,7 @@ def _converter(
         emp_map.get(linha.get("uuid_empresa")),
         sind_map.get(uuid_sind),
         trab_map.get(uuid_trab),
-        tipo_map.get(tipo_codigo),
+        tipo_map.get(tipo_codigo_legado),
         _normalizar_status(linha.get("status_legado")),
         trim_or_none(linha.get("situacao_acionamento"), 50),
         trim_or_none(linha.get("causa_mortis"), 100),
