@@ -52,9 +52,19 @@ def listar(
     params: dict[str, Any] = {}
 
     if busca:
-        # Detecta CPF (só dígitos) ou nome
+        # Busca:
+        #   - texto livre  → nome do trabalhador (ILIKE %X%)
+        #   - 14 dígitos   → CNPJ EXATO da empresa atual (filiais = CNPJs distintos)
+        #   - 11 dígitos   → CPF EXATO do trabalhador
+        #   - 6-10 dígitos → prefixo de CPF (busca enquanto digita)
         digitos = _so_digitos(busca)
-        if len(digitos) >= 6:
+        if len(digitos) == 14:
+            where.append("v.empresa_cnpj = %(cnpj)s")
+            params["cnpj"] = digitos
+        elif len(digitos) == 11:
+            where.append("v.cpf = %(cpf)s")
+            params["cpf"] = digitos
+        elif len(digitos) >= 6:
             where.append("v.cpf LIKE %(cpf_like)s")
             params["cpf_like"] = digitos + "%"
         else:
