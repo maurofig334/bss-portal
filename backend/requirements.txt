@@ -9,3 +9,5 @@ python-multipart==0.0.12
 pymysql==1.1.1
 # Pra parsear planilhas Excel de upload mensal:
 openpyxl==3.1.5
+# Pra gerar PDF dos boletos e listas de trabalhadores:
+reportlab==4.2.5

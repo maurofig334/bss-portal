@@ -48,6 +48,34 @@ async function apiFetch(path, options = {}) {
 }
 
 
+/**
+ * Baixa um PDF (ou outro binário) autenticado e abre em nova aba.
+ *
+ * Por que existe: <a href> não envia o header Authorization quando o
+ * navegador abre uma nova aba. Então pra rotas protegidas, fazemos
+ * fetch + blob + URL.createObjectURL + window.open.
+ */
+async function apiAbrirPdf(path) {
+  const token = localStorage.getItem(TOKEN_KEY);
+  const resp = await fetch(`${API_BASE}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (resp.status === 401) {
+    logout();
+    throw new Error("Sessão expirada");
+  }
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => "");
+    throw new Error(`Erro ${resp.status}: ${txt || resp.statusText}`);
+  }
+  const blob = await resp.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  window.open(blobUrl, "_blank");
+  // Libera memória depois de 60s — janela já carregou:
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+}
+
+
 function logout() {
   localStorage.removeItem(TOKEN_KEY);
   window.location.href = "/app/login.html";

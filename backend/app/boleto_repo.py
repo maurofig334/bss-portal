@@ -21,6 +21,7 @@ def listar(
     mes_referencia: str | None = None,   # YYYY-MM
     id_empresa: int | None = None,
     id_sindicato: int | None = None,
+    incluir_cancelados: bool = False,
     pagina: int = 1,
     por_pagina: int = 50,
     ordem: str = "mes_referencia",
@@ -35,6 +36,12 @@ def listar(
     where = ["1=1"]
     params: dict[str, Any] = {}
 
+    # Esconde os 162k boletos legados que ficaram com id_empresa=NULL na migração
+    # (campo nunca foi populado). Sem empresa não dá pra fazer NADA com o boleto
+    # — não dá pra emitir lista de trabalhadores, vincular dependentes, gerar PDF
+    # com cabeçalho correto. Mantemos no banco pro caso de reconciliação futura.
+    where.append("v.id_empresa IS NOT NULL")
+
     if busca:
         where.append("(v.empresa ILIKE %(s)s OR v.empresa_cnpj LIKE %(cnpj)s OR v.nosso_numero LIKE %(s)s)")
         params["s"] = f"%{busca}%"
@@ -43,6 +50,10 @@ def listar(
     if status:
         where.append("v.status = %(status)s")
         params["status"] = status
+    elif not incluir_cancelados:
+        # Default: esconde cancelados da listagem geral.
+        # Quando o user passa status='cancelado' explicitamente, mostra (filtro acima).
+        where.append("v.status <> 'cancelado'")
     if mes_referencia:
         # YYYY-MM → primeiro dia do mês
         where.append("v.mes_referencia = (%(mes)s || '-01')::date")
