@@ -28,6 +28,66 @@ function badgeSituacao(s) {
   return `<span class="inline-block px-2 py-0.5 rounded-full text-xs ${cls}">${s || "—"}</span>`;
 }
 
+
+// Cache de dependentes por CPF do titular (evita refetch em hovers repetidos)
+const _depCache = new Map();
+
+async function carregarDependentes(cpfTitular) {
+  if (_depCache.has(cpfTitular)) return _depCache.get(cpfTitular);
+  try {
+    const lista = await apiFetch(`/trabalhadores/dependentes/${cpfTitular}`);
+    _depCache.set(cpfTitular, lista);
+    return lista;
+  } catch (e) {
+    return [];
+  }
+}
+
+async function mostrarTooltipDependentes(ev, cpf, qtd) {
+  const tt = document.getElementById("dep-tooltip");
+  const conteudo = tt.querySelector(".tt-conteudo");
+  conteudo.innerHTML = `<div class="text-xs text-slate-500 italic">Carregando…</div>`;
+  tt.style.left = (ev.clientX + 12) + "px";
+  tt.style.top  = (ev.clientY + 12) + "px";
+  tt.classList.remove("hidden");
+  const lista = await carregarDependentes(cpf);
+  if (!lista.length) {
+    conteudo.innerHTML = `<div class="text-xs text-slate-500">Sem dependentes cadastrados.</div>`;
+    return;
+  }
+  const linhas = lista.map(d =>
+    `<div class="text-xs text-slate-700 leading-tight">
+      <span class="font-mono text-[10px] text-slate-500">${formatarCPF(d.cpf)}</span>
+      <span class="ml-1">${d.nome_completo || "—"}</span>
+    </div>`
+  ).join("");
+  conteudo.innerHTML = `
+    <div class="text-[11px] font-semibold text-slate-600 mb-1">${qtd} dependente${qtd > 1 ? "s" : ""}</div>
+    ${linhas}
+  `;
+}
+
+function esconderTooltip() {
+  const tt = document.getElementById("dep-tooltip");
+  if (tt) tt.classList.add("hidden");
+}
+
+function badgeTit(t) {
+  if (t.titularidade === "dependente") {
+    const titulo = t.cpf_titular ? `Dependente de ${formatarCPF(t.cpf_titular)}` : "Dependente";
+    return `<span class="inline-block w-6 h-6 leading-6 rounded-full text-center text-xs font-bold bg-amber-100 text-amber-800" title="${titulo}">D</span>`;
+  }
+  // Titular: T com hover lista dependentes (se tiver)
+  const qtd = t.qtd_dependentes_ativos || 0;
+  if (qtd > 0) {
+    return `<span class="inline-block w-6 h-6 leading-6 rounded-full text-center text-xs font-bold bg-indigo-100 text-indigo-800 cursor-help"
+              onmouseenter="mostrarTooltipDependentes(event, '${t.cpf}', ${qtd})"
+              onmousemove="(function(ev){const tt=document.getElementById('dep-tooltip');if(!tt.classList.contains('hidden')){tt.style.left=(ev.clientX+12)+'px';tt.style.top=(ev.clientY+12)+'px';}})(event)"
+              onmouseleave="esconderTooltip()">T</span>`;
+  }
+  return `<span class="inline-block w-6 h-6 leading-6 rounded-full text-center text-xs font-bold bg-slate-100 text-slate-600" title="Titular sem dependentes">T</span>`;
+}
+
 function ler() {
   return {
     busca:     document.getElementById("f-busca").value.trim(),
@@ -52,7 +112,7 @@ async function recarregar() {
 
 async function carregar() {
   const tbody = document.getElementById("tbody");
-  tbody.innerHTML = `<tr><td colspan="7" class="px-3 py-6 text-center text-slate-400">Carregando…</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="8" class="px-3 py-6 text-center text-slate-400">Carregando…</td></tr>`;
   document.getElementById("tempo").textContent = "";
 
   const t0 = performance.now();
@@ -65,13 +125,14 @@ async function carregar() {
     document.getElementById("stats").textContent = `${data.total.toLocaleString("pt-BR")} trabalhadores encontrados`;
 
     if (data.linhas.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" class="px-3 py-6 text-center text-slate-400">Nenhum resultado</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="px-3 py-6 text-center text-slate-400">Nenhum resultado</td></tr>`;
       document.getElementById("paginacao").innerHTML = "";
       return;
     }
 
     tbody.innerHTML = data.linhas.map(t => `
       <tr class="border-t border-slate-100 hover:bg-slate-50">
+        <td class="px-3 py-2 text-center">${badgeTit(t)}</td>
         <td class="px-3 py-2 font-mono text-xs">${formatarCPF(t.cpf)}</td>
         <td class="px-3 py-2 font-medium text-slate-900">${t.nome_completo || "—"}</td>
         <td class="px-3 py-2 text-slate-700">${t.empresa || "—"}</td>
@@ -85,7 +146,7 @@ async function carregar() {
     montarPaginacao(data);
 
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="7" class="px-3 py-6 text-center text-rose-600">Erro: ${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="px-3 py-6 text-center text-rose-600">Erro: ${e.message}</td></tr>`;
   }
 }
 

@@ -74,7 +74,7 @@ async function carregar() {
     const data = await apiFetch(`/processos?${montarQuery()}`);
     const dur = (performance.now() - t0).toFixed(0);
     document.getElementById("tempo").textContent = `⚡ ${dur}ms`;
-    document.getElementById("stats").textContent = `${data.total.toLocaleString("pt-BR")} processos encontrados`;
+    document.getElementById("stats").textContent = `${data.total.toLocaleString("pt-BR")} benefícios encontrados`;
 
     if (!data.linhas.length) {
       tbody.innerHTML = `<tr><td colspan="8" class="px-3 py-6 text-center text-slate-400">Nenhum resultado</td></tr>`;

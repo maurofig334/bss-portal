@@ -51,7 +51,7 @@ async function carregar() {
            `${pctAdimp}% adimplentes`, "indigo"),
       card("Trabalhadores Ativos", fmtNum(k.trabalhadores_ativos),
            `de ${fmtNum(k.trabalhadores_total)} total`, "indigo"),
-      card("Processos Abertos", fmtNum(k.processos_abertos),
+      card("Benefícios Abertos", fmtNum(k.processos_abertos),
            `${fmtNum(k.processos_total - k.processos_abertos)} finalizados`, "amber"),
       card("Boletos Pagos", fmtNum(k.boletos_pagos),
            `${fmtNum(k.boletos_total)} no total`, "emerald"),
@@ -109,7 +109,7 @@ async function carregar() {
       data: {
         labels: tipos.map(t => t.nome),
         datasets: [{
-          label: "Processos",
+          label: "Benefícios",
           data: tipos.map(t => Number(t.qtd || 0)),
           backgroundColor: "rgba(99,102,241,0.7)",
         }],

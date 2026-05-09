@@ -63,6 +63,7 @@
             <table class="min-w-full text-sm">
               <thead class="bg-slate-50 text-xs text-slate-600 uppercase tracking-wider">
                 <tr>
+                  <th class="px-3 py-2 text-center" title="Titular ou Dependente">TIT</th>
                   <th class="px-3 py-2 text-left">CPF</th>
                   <th class="px-3 py-2 text-left">Nome</th>
                   <th class="px-3 py-2 text-left">Empresa</th>
@@ -84,6 +85,11 @@
   <script src="/app/js/api.js"></script>
   <script src="/app/js/sidebar.js"></script>
   <script>renderizarSidebar("trabalhadores");</script>
+  <div id="dep-tooltip"
+       class="hidden fixed z-50 max-w-xs bg-white border border-slate-300 rounded-lg shadow-lg p-3 pointer-events-none">
+    <div class="tt-conteudo"></div>
+  </div>
+
   <script src="/app/js/trabalhadores.js"></script>
 </body>
 </html>

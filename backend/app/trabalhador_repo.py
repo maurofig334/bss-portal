@@ -79,7 +79,9 @@ def listar(
     sql_total = f"SELECT COUNT(*) AS total FROM bss.v_trabalhador v WHERE {where_sql}"
     sql_lista = f"""
         SELECT
-            v.id, v.cpf, v.nome_completo, v.titularidade, v.situacao,
+            v.id, v.cpf, v.nome_completo, v.titularidade, v.cpf_titular,
+            v.qtd_dependentes_ativos,
+            v.situacao,
             v.empresa, v.empresa_cnpj, v.sindicato, v.sindicato_categoria,
             v.trab_cidade, v.trab_uf,
             v.mes_ultimo_vinculo, v.ultimo_pagamento_em
@@ -126,3 +128,19 @@ def buscar_por_id(id: int) -> dict[str, Any] | None:
         with conn.cursor() as cur:
             cur.execute(sql, (id,))
             return cur.fetchone()
+
+def buscar_dependentes(cpf_titular: str) -> list[dict[str, Any]]:
+    """Lista dependentes de um titular (por cpf_titular)."""
+    if not cpf_titular:
+        return []
+    sql = """
+        SELECT id, cpf, nome_completo, situacao, data_nascimento
+          FROM bss.trabalhador
+         WHERE cpf_titular = %s
+           AND titularidade = 'dependente'
+         ORDER BY nome_completo
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (cpf_titular,))
+            return list(cur.fetchall())

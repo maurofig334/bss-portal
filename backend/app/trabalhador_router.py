@@ -64,6 +64,18 @@ def listar(
     )
 
 
+@router.get("/dependentes/{cpf_titular}")
+def listar_dependentes(
+    cpf_titular: str,
+    usuario: Annotated[UsuarioInfo, Depends(usuario_logado)],
+):
+    """Retorna dependentes vinculados a um titular pelo CPF."""
+    cpf = "".join(c for c in cpf_titular if c.isdigit())
+    if len(cpf) != 11:
+        raise HTTPException(400, "CPF inválido")
+    return trabalhador_repo.buscar_dependentes(cpf)
+
+
 @router.get("/{id_trabalhador}")
 def detalhe(
     id_trabalhador: int,
