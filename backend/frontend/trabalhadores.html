@@ -16,6 +16,15 @@
         <div class="px-6 py-4 flex items-center justify-between">
           <h1 class="text-xl font-semibold text-slate-800">Trabalhadores</h1>
           <div class="flex items-center gap-3 text-sm">
+            <button onclick="abrirModalUpload('carregar')" class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium">
+              ⬆ Carregar Trabalhadores
+            </button>
+            <button onclick="abrirModalUpload('inativar')" class="px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm font-medium">
+              ❌ Inativar Trabalhadores
+            </button>
+            <button onclick="abrirModalUpload('dependentes')" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium">
+              👥 Carregar Dependentes
+            </button>
             <span id="usuario-info" class="text-slate-500">—</span>
             <button onclick="logout()" class="text-slate-500 hover:text-slate-800">Sair</button>
           </div>
@@ -88,6 +97,32 @@
   <div id="dep-tooltip"
        class="hidden fixed z-50 max-w-xs bg-white border border-slate-300 rounded-lg shadow-lg p-3 pointer-events-none">
     <div class="tt-conteudo"></div>
+  </div>
+
+  <div id="modal-upload" class="hidden fixed inset-0 z-40 bg-slate-900/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
+        <h2 id="modal-titulo" class="font-semibold text-slate-800">Carregar Trabalhadores</h2>
+        <button onclick="fecharModalUpload()" class="text-slate-400 hover:text-slate-700 text-xl leading-none">&times;</button>
+      </div>
+      <div id="modal-corpo" class="px-5 py-4 overflow-y-auto flex-1">
+        <p class="text-sm text-slate-600 mb-3">
+          1. <a href="#" onclick="baixarTemplate(event)" class="text-indigo-700 hover:underline">Clique aqui para baixar a planilha modelo</a>
+        </p>
+        <div class="border border-slate-200 rounded-lg p-4 bg-slate-50">
+          <label class="block text-sm font-medium text-slate-700 mb-2">
+            <span class="text-rose-600">*</span> Arquivo (.xlsx)
+          </label>
+          <input id="f-arquivo" type="file" accept=".xlsx,.xlsm" class="block w-full text-sm">
+        </div>
+        <div id="modal-status" class="mt-3 text-sm"></div>
+      </div>
+      <div class="px-5 py-3 border-t border-slate-200 flex justify-end gap-2 bg-slate-50">
+        <button onclick="fecharModalUpload()" class="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 rounded text-sm">Fechar</button>
+        <button id="btn-carregar" onclick="enviarUpload()" class="px-4 py-1.5 bg-indigo-600 text-white hover:bg-indigo-700 rounded text-sm font-medium">Carregar</button>
+        <button id="btn-confirmar-inativacao" class="hidden px-4 py-1.5 bg-amber-600 text-white hover:bg-amber-700 rounded text-sm font-medium" onclick="confirmarInativacao()">Efetivar Inativação</button>
+      </div>
+    </div>
   </div>
 
   <script src="/app/js/trabalhadores.js"></script>

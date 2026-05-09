@@ -186,4 +186,262 @@ function limparFiltros() {
 }
 
 // Carga inicial
+
+
+// ==========================
+// Upload de planilha (3 modos: carregar / inativar / dependentes)
+// ==========================
+const UPLOAD_MODOS = {
+  carregar: {
+    titulo:        "Carregar Trabalhadores",
+    endpoint:      "/lista-mensal/upload-trabalhadores",
+    template:      "/lista-mensal/template",
+    template_nome: "trabalhadores_modelo.xlsx",
+    btn_label:     "Carregar",
+  },
+  inativar: {
+    titulo:        "Inativar Trabalhadores",
+    endpoint:      "/lista-mensal/upload-inativacao",
+    template:      "/lista-mensal/template-inativacao",
+    template_nome: "trabalhadores_inativos_modelo.xlsx",
+    btn_label:     "Analisar",
+    fluxo_2_etapas: true,
+  },
+  dependentes: {
+    titulo:        "Carregar Dependentes",
+    endpoint:      "/lista-mensal/upload-dependentes",
+    template:      "/lista-mensal/template-dependentes",
+    template_nome: "dependentes_modelo.xlsx",
+    btn_label:     "Carregar",
+  },
+};
+
+let _modo_atual = "carregar";
+
+function abrirModalUpload(modo) {
+  _modo_atual = modo || "carregar";
+  const cfg = UPLOAD_MODOS[_modo_atual];
+  document.getElementById("modal-upload").classList.remove("hidden");
+  document.getElementById("modal-titulo").textContent = cfg.titulo;
+  document.getElementById("f-arquivo").value = "";
+  document.getElementById("modal-status").innerHTML = "";
+  const btn = document.getElementById("btn-carregar");
+  btn.textContent = cfg.btn_label;
+  btn.disabled = false;
+  btn.classList.remove("hidden");
+  document.getElementById("btn-confirmar-inativacao").classList.add("hidden");
+}
+
+function fecharModalUpload() {
+  document.getElementById("modal-upload").classList.add("hidden");
+}
+
+async function baixarTemplate(ev) {
+  ev.preventDefault();
+  const cfg = UPLOAD_MODOS[_modo_atual];
+  const token = localStorage.getItem("bss_token");
+  try {
+    const resp = await fetch(cfg.template, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = cfg.template_nome;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert("Erro ao baixar template: " + e.message);
+  }
+}
+
+function renderErros(payload) {
+  const cats = payload.erros || {};
+  const titulos = {
+    estrutura:                "Erros de estrutura no arquivo",
+    cnpj_invalido:            "CNPJ inválido (deve ter 14 dígitos)",
+    cnpj_nao_cadastrado:      "Empresas com CNPJ não identificado",
+    cnpj_sem_permissao:       "CNPJs sem permissão para este usuário",
+    cpf_invalido:             "CPF Incorreto (11 dígitos com DV válido)",
+    nome_vazio:               "Nome em branco",
+    sindicato_vazio:          "Sindicato em branco",
+    sindicato_nao_cadastrado: "Sindicato Laboral não identificado",
+    cpf_duplicado_na_planilha:"CPF duplicado na planilha (mesma empresa)",
+  };
+  let html = `<div class="bg-rose-50 border border-rose-300 rounded-lg p-4">
+    <p class="text-rose-800 font-semibold mb-3">${payload.mensagem || "Carga não realizada."}</p>`;
+  for (const cat of Object.keys(titulos)) {
+    const itens = cats[cat] || [];
+    if (!itens.length) continue;
+    html += `<div class="mt-2">
+      <p class="text-sm font-semibold text-slate-700">${titulos[cat]}:</p>
+      <ul class="text-xs font-mono text-rose-700 mt-1 ml-4 list-disc">`;
+    for (const v of itens) html += `<li>${v}</li>`;
+    html += `</ul></div>`;
+  }
+  // Categorias não previstas (defesa)
+  for (const cat of Object.keys(cats)) {
+    if (!titulos[cat]) {
+      html += `<div class="mt-2">
+        <p class="text-sm font-semibold text-slate-700">${cat}:</p>
+        <ul class="text-xs font-mono text-rose-700 mt-1 ml-4 list-disc">`;
+      for (const v of cats[cat]) html += `<li>${v}</li>`;
+      html += `</ul></div>`;
+    }
+  }
+  html += `</div>`;
+  return html;
+}
+
+async function enviarUpload() {
+  const inp = document.getElementById("f-arquivo");
+  const status = document.getElementById("modal-status");
+  const btn = document.getElementById("btn-carregar");
+  if (!inp.files.length) {
+    status.innerHTML = `<div class="text-rose-600">Selecione um arquivo.</div>`;
+    return;
+  }
+  btn.disabled = true;
+  status.innerHTML = `<div class="text-slate-500">Enviando e processando…</div>`;
+
+  const cfg = UPLOAD_MODOS[_modo_atual];
+  const fd = new FormData();
+  fd.append("arquivo", inp.files[0]);
+  const token = localStorage.getItem("bss_token");
+
+  // Inativação tem fluxo de 2 etapas: 1ª chamada com confirmar=false (preview)
+  let url = cfg.endpoint;
+  if (cfg.fluxo_2_etapas) url += "?confirmar=false";
+
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      const payload = data.detail || data;
+      status.innerHTML = renderErros(payload);
+      btn.disabled = false;
+      return;
+    }
+    if (cfg.fluxo_2_etapas && data.modo === "preview") {
+      // Render preview com botão Efetivar
+      status.innerHTML = renderPreviewInativacao(data);
+      btn.classList.add("hidden");                                  // esconde "Analisar"
+      const bc = document.getElementById("btn-confirmar-inativacao");
+      bc.classList.remove("hidden");
+      bc.disabled = (data.qtd_validas === 0);
+      _arquivo_pendente_inativacao = inp.files[0];
+      return;
+    }
+    // Sucesso final (carregar/dependentes)
+    renderSucessoFinal(data);
+    setTimeout(() => { fecharModalUpload(); recarregar(); }, 2500);
+  } catch (e) {
+    status.innerHTML = `<div class="text-rose-600">Erro de rede: ${e.message}</div>`;
+    btn.disabled = false;
+  }
+}
+
+let _arquivo_pendente_inativacao = null;
+
+async function confirmarInativacao() {
+  const status = document.getElementById("modal-status");
+  const bc = document.getElementById("btn-confirmar-inativacao");
+  if (!_arquivo_pendente_inativacao) return;
+  bc.disabled = true;
+  status.innerHTML = `<div class="text-slate-500">Efetivando inativação…</div>`;
+
+  const fd = new FormData();
+  fd.append("arquivo", _arquivo_pendente_inativacao);
+  const token = localStorage.getItem("bss_token");
+
+  try {
+    const resp = await fetch("/lista-mensal/upload-inativacao?confirmar=true", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      status.innerHTML = renderErros(data.detail || data);
+      bc.disabled = false;
+      return;
+    }
+    renderSucessoFinal(data);
+    _arquivo_pendente_inativacao = null;
+    setTimeout(() => { fecharModalUpload(); recarregar(); }, 2500);
+  } catch (e) {
+    status.innerHTML = `<div class="text-rose-600">Erro de rede: ${e.message}</div>`;
+    bc.disabled = false;
+  }
+}
+
+function renderPreviewInativacao(data) {
+  const cats = data.erros || {};
+  const titulosErro = {
+    cnpj_invalido:            "CNPJ inválido (14 dígitos)",
+    cnpj_nao_cadastrado:      "Empresas com CNPJ não identificado",
+    cnpj_sem_permissao:       "CNPJs sem permissão para este usuário",
+    cpf_invalido:             "CPF Incorreto (11 dígitos com DV válido)",
+    cpf_nao_cadastrado:       "CPF não cadastrado no sistema",
+    cpf_nao_ativo_neste_cnpj: "CPF não está ativo neste CNPJ neste mês",
+  };
+  let html = `<div class="bg-amber-50 border border-amber-300 rounded-lg p-4 mb-3">
+    <p class="font-semibold text-amber-900">
+      Preview da inativação (mês ${data.mes_referencia})
+    </p>
+    <ul class="text-sm mt-2 text-amber-900">
+      <li>Total de linhas na planilha: <strong>${data.qtd_total_planilha}</strong></li>
+      <li>Linhas válidas que serão inativadas: <strong>${data.qtd_validas}</strong></li>
+    </ul>
+  </div>`;
+  if (Object.keys(cats).length) {
+    html += `<div class="bg-rose-50 border border-rose-300 rounded-lg p-4 mb-3">
+      <p class="font-semibold text-rose-800 mb-2">Linhas que serão IGNORADAS por erro:</p>`;
+    for (const cat of Object.keys(titulosErro)) {
+      const itens = cats[cat] || [];
+      if (!itens.length) continue;
+      html += `<div class="mt-2"><p class="text-sm font-semibold text-slate-700">${titulosErro[cat]}:</p>
+        <ul class="text-xs font-mono text-rose-700 mt-1 ml-4 list-disc">`;
+      for (const v of itens) html += `<li>${v}</li>`;
+      html += `</ul></div>`;
+    }
+    for (const cat of Object.keys(cats)) {
+      if (titulosErro[cat]) continue;
+      html += `<div class="mt-2"><p class="text-sm font-semibold text-slate-700">${cat}:</p>
+        <ul class="text-xs font-mono text-rose-700 mt-1 ml-4 list-disc">`;
+      for (const v of cats[cat]) html += `<li>${v}</li>`;
+      html += `</ul></div>`;
+    }
+    html += `</div>`;
+  }
+  if (data.qtd_validas > 0) {
+    html += `<div class="text-sm text-slate-700">Clique em <strong>Efetivar Inativação</strong> pra inativar ${data.qtd_validas} vínculo(s).</div>`;
+  } else {
+    html += `<div class="text-sm text-rose-600">Nenhuma linha válida pra efetivar.</div>`;
+  }
+  return html;
+}
+
+function renderSucessoFinal(data) {
+  const status = document.getElementById("modal-status");
+  let html = `<div class="bg-emerald-50 border border-emerald-300 rounded-lg p-4 text-emerald-900">
+    <p class="font-semibold">${data.mensagem || "Concluído."}</p>
+    <ul class="text-sm mt-2">`;
+  if (data.qtd_processadas != null)
+    html += `<li>Processados: <strong>${data.qtd_processadas}</strong></li>`;
+  if (data.qtd_inativadas != null)
+    html += `<li>Inativados: <strong>${data.qtd_inativadas}</strong></li>`;
+  if (data.qtd_listas_criadas != null)
+    html += `<li>Listas criadas: <strong>${data.qtd_listas_criadas}</strong></li>`;
+  html += `</ul></div>`;
+  status.innerHTML = html;
+}
+
+
 carregar();
