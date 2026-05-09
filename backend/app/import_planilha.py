@@ -66,9 +66,26 @@ def _so_digitos(s: Any) -> str:
     return re.sub(r"\D+", "", str(s))
 
 
+def _norm_cpf(s: Any) -> str:
+    """Só dígitos, pad-left com zeros até 11 (Excel come zero à esquerda)."""
+    d = _so_digitos(s)
+    if not d or len(d) > 11:
+        return d
+    return d.zfill(11)
+
+
+def _norm_cnpj(s: Any) -> str:
+    """Só dígitos, pad-left com zeros até 14."""
+    d = _so_digitos(s)
+    if not d or len(d) > 14:
+        return d
+    return d.zfill(14)
+
+
 def validar_cpf(cpf_raw: Any) -> bool:
-    """Valida CPF: 11 dígitos + DV (Mod 11). Rejeita XXXXXXXXXXX (todos iguais)."""
-    cpf = _so_digitos(cpf_raw)
+    """Valida CPF: 11 dígitos + DV (Mod 11). Rejeita XXXXXXXXXXX (todos iguais).
+    Aceita CPF que perdeu zero à esquerda (faz pad antes de validar)."""
+    cpf = _norm_cpf(cpf_raw)
     if len(cpf) != 11 or cpf == cpf[0] * 11:
         return False
     # DV1
@@ -92,6 +109,14 @@ def _str_or_empty(v: Any) -> str:
     if v is None:
         return ""
     return str(v).strip()
+
+
+def _norm_nome(v: Any) -> str:
+    """Trim + colapsa espaços internos. Excel costuma ter espaço duplo, leading/trailing."""
+    s = _str_or_empty(v)
+    if not s:
+        return ""
+    return re.sub(r"\s+", " ", s)
 
 
 def _linha_vazia(*vals: Any) -> bool:
@@ -176,9 +201,9 @@ def parse_planilha_trabalhadores(file_bytes: bytes) -> ResultadoParser:
         if _linha_vazia(cnpj_raw, cpf_raw, nome_raw, sind_raw):
             continue
 
-        cnpj = _so_digitos(cnpj_raw)
-        cpf  = _so_digitos(cpf_raw)
-        nome = _str_or_empty(nome_raw)
+        cnpj = _norm_cnpj(cnpj_raw)
+        cpf  = _norm_cpf(cpf_raw)
+        nome = _norm_nome(nome_raw)
         sind = _str_or_empty(sind_raw)
 
         # Valida cada campo. Acumula erros mesmo se a linha tiver vários.
@@ -303,8 +328,8 @@ def parse_planilha_inativacao(file_bytes: bytes) -> tuple[list, dict]:
         cpf_raw = raw_row[1] if len(raw_row) > 1 else None
         if _linha_vazia(cnpj_raw, cpf_raw):
             continue
-        cnpj = _so_digitos(cnpj_raw)
-        cpf = _so_digitos(cpf_raw)
+        cnpj = _norm_cnpj(cnpj_raw)
+        cpf = _norm_cpf(cpf_raw)
         if len(cnpj) != 14:
             erros["cnpj_invalido"].append(_str_or_empty(cnpj_raw) or f"(linha {n_linha})")
             continue
@@ -418,10 +443,10 @@ def parse_planilha_dependentes(file_bytes: bytes) -> tuple[list, dict]:
 
         if _linha_vazia(cnpj_raw, cpf_dep_raw, nome_raw, cpf_tit_raw):
             continue
-        cnpj = _so_digitos(cnpj_raw)
-        cpf_dep = _so_digitos(cpf_dep_raw)
-        cpf_tit = _so_digitos(cpf_tit_raw)
-        nome = _str_or_empty(nome_raw)
+        cnpj = _norm_cnpj(cnpj_raw)
+        cpf_dep = _norm_cpf(cpf_dep_raw)
+        cpf_tit = _norm_cpf(cpf_tit_raw)
+        nome = _norm_nome(nome_raw)
         ok = True
         if len(cnpj) != 14:
             erros["cnpj_invalido"].append(_str_or_empty(cnpj_raw) or f"(linha {n_linha})")
