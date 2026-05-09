@@ -145,26 +145,42 @@ def processar_carga_trabalhadores(
                 # 2) Pra cada linha: upsert trabalhador + insert lista_mensal_item
                 cpfs_neste_upload: set[str] = set()
                 for it in items:
-                    # UPSERT trabalhador (chave: cpf)
+                    # cpf não tem UNIQUE no schema (legado tem dupes), então
+                    # fazemos SELECT+UPDATE/INSERT manual em vez de ON CONFLICT.
                     cur.execute(
-                        """
-                        INSERT INTO bss.trabalhador
-                            (cpf, nome_completo, id_empresa_atual, id_sindicato_atual,
-                             mes_ultimo_vinculo, situacao, titularidade)
-                        VALUES (%s, %s, %s, %s, %s, 'ativo', 'titular')
-                        ON CONFLICT (cpf) DO UPDATE
-                           SET nome_completo       = EXCLUDED.nome_completo,
-                               id_empresa_atual    = EXCLUDED.id_empresa_atual,
-                               id_sindicato_atual  = EXCLUDED.id_sindicato_atual,
-                               mes_ultimo_vinculo  = EXCLUDED.mes_ultimo_vinculo,
-                               situacao            = 'ativo',
-                               atualizado_em       = NOW()
-                         RETURNING id
-                        """,
-                        (it["cpf"], it["nome"], id_empresa, it["id_sindicato"],
-                         mes_referencia),
+                        "SELECT id FROM bss.trabalhador WHERE cpf = %s LIMIT 1",
+                        (it["cpf"],),
                     )
-                    id_trab = cur.fetchone()["id"]
+                    row = cur.fetchone()
+                    if row:
+                        id_trab = row["id"]
+                        cur.execute(
+                            """
+                            UPDATE bss.trabalhador
+                               SET nome_completo      = %s,
+                                   id_empresa_atual   = %s,
+                                   id_sindicato_atual = %s,
+                                   mes_ultimo_vinculo = %s,
+                                   situacao           = 'ativo',
+                                   atualizado_em      = NOW()
+                             WHERE id = %s
+                            """,
+                            (it["nome"], id_empresa, it["id_sindicato"],
+                             mes_referencia, id_trab),
+                        )
+                    else:
+                        cur.execute(
+                            """
+                            INSERT INTO bss.trabalhador
+                                (cpf, nome_completo, id_empresa_atual, id_sindicato_atual,
+                                 mes_ultimo_vinculo, situacao, titularidade)
+                            VALUES (%s, %s, %s, %s, %s, 'ativo', 'titular')
+                            RETURNING id
+                            """,
+                            (it["cpf"], it["nome"], id_empresa, it["id_sindicato"],
+                             mes_referencia),
+                        )
+                        id_trab = cur.fetchone()["id"]
 
                     # INSERT lista_mensal_item (UNIQUE por trab+mes+empresa permite multi)
                     cur.execute(
@@ -539,28 +555,43 @@ def analisar_e_processar_dependentes(
                     tit = cur.fetchone()
                     id_sindicato = tit["id_sindicato_atual"]
 
-                    # UPSERT trabalhador (dependente)
+                    # SELECT+UPDATE/INSERT manual (cpf não é UNIQUE).
                     cur.execute(
-                        """
-                        INSERT INTO bss.trabalhador
-                            (cpf, nome_completo, id_empresa_atual, id_sindicato_atual,
-                             mes_ultimo_vinculo, situacao, titularidade, cpf_titular)
-                        VALUES (%s, %s, %s, %s, %s, 'ativo', 'dependente', %s)
-                        ON CONFLICT (cpf) DO UPDATE
-                           SET nome_completo      = EXCLUDED.nome_completo,
-                               id_empresa_atual   = EXCLUDED.id_empresa_atual,
-                               id_sindicato_atual = EXCLUDED.id_sindicato_atual,
-                               mes_ultimo_vinculo = EXCLUDED.mes_ultimo_vinculo,
-                               situacao           = 'ativo',
-                               titularidade       = 'dependente',
-                               cpf_titular        = EXCLUDED.cpf_titular,
-                               atualizado_em      = NOW()
-                         RETURNING id
-                        """,
-                        (it["cpf_dep"], it["nome_dep"], id_empresa, id_sindicato,
-                         mes_referencia, it["cpf_titular"]),
+                        "SELECT id FROM bss.trabalhador WHERE cpf = %s LIMIT 1",
+                        (it["cpf_dep"],),
                     )
-                    id_dep = cur.fetchone()["id"]
+                    row_dep = cur.fetchone()
+                    if row_dep:
+                        id_dep = row_dep["id"]
+                        cur.execute(
+                            """
+                            UPDATE bss.trabalhador
+                               SET nome_completo      = %s,
+                                   id_empresa_atual   = %s,
+                                   id_sindicato_atual = %s,
+                                   mes_ultimo_vinculo = %s,
+                                   situacao           = 'ativo',
+                                   titularidade       = 'dependente',
+                                   cpf_titular        = %s,
+                                   atualizado_em      = NOW()
+                             WHERE id = %s
+                            """,
+                            (it["nome_dep"], id_empresa, id_sindicato,
+                             mes_referencia, it["cpf_titular"], id_dep),
+                        )
+                    else:
+                        cur.execute(
+                            """
+                            INSERT INTO bss.trabalhador
+                                (cpf, nome_completo, id_empresa_atual, id_sindicato_atual,
+                                 mes_ultimo_vinculo, situacao, titularidade, cpf_titular)
+                            VALUES (%s, %s, %s, %s, %s, 'ativo', 'dependente', %s)
+                            RETURNING id
+                            """,
+                            (it["cpf_dep"], it["nome_dep"], id_empresa, id_sindicato,
+                             mes_referencia, it["cpf_titular"]),
+                        )
+                        id_dep = cur.fetchone()["id"]
                     cur.execute(
                         """
                         INSERT INTO bss.lista_mensal_item
