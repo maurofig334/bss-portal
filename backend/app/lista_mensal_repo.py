@@ -45,7 +45,7 @@ def resolver_empresas(cnpjs: list[str]) -> dict[str, int]:
     if not cnpjs:
         return {}
     cnpjs_set = sorted({_so_digitos(c) for c in cnpjs if _so_digitos(c)})
-    sql = "SELECT id, cnpj FROM bss.empresa WHERE cnpj = ANY(%s) AND ativo = TRUE"
+    sql = "SELECT id, cnpj FROM bss.empresa WHERE cnpj = ANY(%s) AND status = 'ativa'"
     out: dict[str, int] = {}
     with get_pg_connection() as conn:
         with conn.cursor() as cur:
