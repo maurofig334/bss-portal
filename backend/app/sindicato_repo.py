@@ -93,9 +93,19 @@ def listar(
             s.qtd_trabalhadores_ativos,
             s.qtd_trabalhadores_inativos,
             s.atualizado_em,
-            -- Tipo de sindicato: FEMACO ou NÃO FEMACO (derivado da federação):
-            CASE WHEN UPPER(TRIM(COALESCE(s.federacao, ''))) LIKE '%%FEMACO%%'
-                 THEN 'FEMACO' ELSE 'NÃO FEMACO' END AS tipo_sindicato,
+            -- Tipo de sindicato: vem do legado (s.tipo_sindicato). Fallback no derivado
+            -- (LIKE FEMACO na federação) pra sindicatos onde o sync ainda não populou.
+            COALESCE(
+                NULLIF(TRIM(s.tipo_sindicato), ''),
+                CASE WHEN UPPER(TRIM(COALESCE(s.federacao, ''))) LIKE '%%FEMACO%%'
+                     THEN 'FEMACO' ELSE 'NAO FEMACO' END
+            ) AS tipo_sindicato,
+            -- Demais campos descobertos no épico #17 (2026-05-11):
+            s.telefone, s.outro_telefone, s.fax,
+            s.email, s.contato_principal, s.patronal_empresa,
+            s.website, s.descricao,
+            s.endereco_logradouro, s.endereco_cidade, s.endereco_uf,
+            s.endereco_cep, s.endereco_pais,
             -- Vencimento do mês corrente (mantido pra usos futuros — detalhe):
             pb.{col_venc} AS dia_vencimento_mes,
             pb.tipo       AS tipo_parametro,
