@@ -97,3 +97,80 @@ def buscar_por_id(id_boleto: int) -> dict[str, Any] | None:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM bss.v_boleto WHERE id = %s", (id_boleto,))
             return cur.fetchone()
+
+
+def buscar_detalhe(id_boleto: int) -> dict[str, Any] | None:
+    """
+    Retorna boleto + parametros_boleto.nome + lista de trabalhadores
+    (boleto_item × bss.trabalhador) — pra tela de detalhe espelhar o legado.
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    b.id, b.numero_boleto, b.nosso_numero, b.id_legado_uuid,
+                    b.id_empresa, b.id_sindicato, b.id_lista_mensal,
+                    b.mes_referencia, b.qtd_trabalhadores, b.qtd_dependentes,
+                    b.valor_total, b.banco, b.linha_digitavel, b.codigo_barras,
+                    b.link_pdf, b.status, b.tipo, b.data_emissao, b.data_vencimento,
+                    b.data_pagamento, b.criado_em, b.atualizado_em,
+                    b.id_boleto_substituido, b.motivo_cancelamento,
+                    e.razao_social    AS empresa,
+                    e.cnpj            AS empresa_cnpj,
+                    s.razao_social    AS sindicato,
+                    p.nome            AS parametro_nome,
+                    p.tarifa_titular, p.tarifa_dependente,
+                    -- Boleto substituto (se este foi reemitido):
+                    (SELECT b2.nosso_numero
+                       FROM bss.boleto b2
+                      WHERE b2.id_boleto_substituido = b.id
+                      ORDER BY b2.id DESC LIMIT 1) AS nosso_numero_substituto,
+                    (SELECT b2.id
+                       FROM bss.boleto b2
+                      WHERE b2.id_boleto_substituido = b.id
+                      ORDER BY b2.id DESC LIMIT 1) AS id_substituto,
+                    -- Boleto de origem (se este é uma reemissão):
+                    (SELECT b3.nosso_numero FROM bss.boleto b3
+                      WHERE b3.id = b.id_boleto_substituido) AS nosso_numero_origem,
+                    (SELECT b3.mes_referencia FROM bss.boleto b3
+                      WHERE b3.id = b.id_boleto_substituido) AS mes_origem
+                  FROM bss.boleto b
+                  LEFT JOIN bss.empresa  e ON e.id = b.id_empresa
+                  LEFT JOIN bss.sindicato s ON s.id = b.id_sindicato
+                  LEFT JOIN bss.parametros_boleto p
+                         ON p.id_sindicato = s.id AND p.ativo
+                 WHERE b.id = %s
+                """,
+                (id_boleto,),
+            )
+            boleto = cur.fetchone()
+            if not boleto:
+                return None
+
+            # Agrega por trabalhador — alguns boletos do legado tem múltiplas
+            # linhas em boleto_item pra mesmo trabalhador (provável bug da
+            # migração legada). qtd_lancamentos > 1 sinaliza a duplicação.
+            cur.execute(
+                """
+                SELECT
+                    t.id             AS id_trabalhador,
+                    t.cpf,
+                    t.nome_completo,
+                    t.titularidade,
+                    t.situacao,
+                    t.data_admissao,
+                    bool_or(bi.eh_dependente)      AS eh_dependente,
+                    SUM(bi.taxa_aplicada)          AS taxa_aplicada,
+                    COUNT(*)                       AS qtd_lancamentos
+                  FROM bss.boleto_item bi
+                  JOIN bss.trabalhador t ON t.id = bi.id_trabalhador
+                 WHERE bi.id_boleto = %s
+                 GROUP BY t.id, t.cpf, t.nome_completo, t.titularidade,
+                          t.situacao, t.data_admissao
+                 ORDER BY bool_or(bi.eh_dependente), t.nome_completo
+                """,
+                (id_boleto,),
+            )
+            boleto["itens"] = cur.fetchall()
+            return boleto

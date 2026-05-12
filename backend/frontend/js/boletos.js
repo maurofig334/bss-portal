@@ -120,7 +120,9 @@ async function carregar() {
 
     tbody.innerHTML = data.linhas.map(b => `
       <tr class="border-t border-slate-100 hover:bg-slate-50">
-        <td class="px-3 py-2 font-mono text-xs">${b.nosso_numero || b.numero_boleto || "—"}</td>
+        <td class="px-3 py-2 font-mono text-xs">
+          <a href="/app/boleto-detalhe.html?id=${b.id}" class="text-indigo-700 hover:underline">${b.nosso_numero || b.numero_boleto || "—"}</a>
+        </td>
         <td class="px-3 py-2 font-medium text-slate-900">${b.empresa || "—"}</td>
         <td class="px-3 py-2 text-slate-600 text-xs">${b.sindicato || "—"}</td>
         <td class="px-3 py-2 text-center">${fmtMes(b.mes_referencia)}</td>

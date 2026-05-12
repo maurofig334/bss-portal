@@ -72,6 +72,27 @@ def detalhe(
     return row
 
 
+@router.get("/{id_boleto}/detalhe")
+def detalhe_completo(
+    id_boleto: int,
+    usuario: Annotated[UsuarioInfo, Depends(usuario_logado)],
+):
+    """Detalhe completo do boleto + trabalhadores (boleto_item) pra tela de detalhe."""
+    row = boleto_repo.buscar_detalhe(id_boleto)
+    if not row:
+        raise HTTPException(404, "Boleto não encontrado")
+    # Empresa nunca vê cancelado:
+    if usuario.perfil == "empresa":
+        if row.get("status") == "cancelado":
+            raise HTTPException(404, "Boleto não disponível")
+        if row.get("id_empresa") not in usuario.empresas:
+            raise HTTPException(403, "Boleto fora do escopo")
+    elif usuario.perfil == "sindicato":
+        if row.get("id_sindicato") not in usuario.sindicatos:
+            raise HTTPException(403, "Boleto fora do escopo")
+    return row
+
+
 # =============================================================================
 # Emissão (épico #21)
 # =============================================================================

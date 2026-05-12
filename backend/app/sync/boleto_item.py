@@ -32,14 +32,16 @@ SQL_LEGADO = """
 """
 
 
-# OBS: usamos INSERT puro (sem ON CONFLICT) pra ganhar performance.
-# Re-roda? Garantir TRUNCATE antes (sem perder boletos).
+# UPSERT idempotente. UNIQUE (id_boleto, id_trabalhador) adicionado em 09_boleto_item_dedup.sql.
+# Permite rodar o sync diário sem duplicar — descoberto em 2026-05-11
+# que a versão antiga (INSERT puro) triplicava as 4.9M linhas a cada execução.
 SQL_INSERT = """
     INSERT INTO bss.boleto_item (
         id_boleto, id_trabalhador, id_sindicato, mes_referencia,
         taxa_aplicada, eh_dependente
     )
     VALUES (%s, %s, %s, %s, %s, %s)
+    ON CONFLICT (id_boleto, id_trabalhador) DO NOTHING
 """
 
 
