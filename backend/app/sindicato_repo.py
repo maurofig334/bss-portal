@@ -164,3 +164,45 @@ def buscar_por_id(id_sindicato: int) -> dict[str, object] | None:
         with conn.cursor() as cur:
             cur.execute(sql, (id_sindicato,))
             return cur.fetchone()
+
+
+def buscar_detalhe(id_sindicato: int) -> dict[str, Any] | None:
+    """
+    Detalhe completo do sindicato + JOIN com parametros_boleto + agregado
+    de valor_beneficio_sindicato — pra tela de detalhe.
+    """
+    sql = """
+        SELECT s.*,
+               -- Tipo de sindicato (real do legado, fallback no derivado):
+               COALESCE(
+                   NULLIF(TRIM(s.tipo_sindicato), ''),
+                   CASE WHEN UPPER(TRIM(COALESCE(s.federacao, ''))) LIKE '%%FEMACO%%'
+                        THEN 'FEMACO' ELSE 'NAO FEMACO' END
+               ) AS tipo_sindicato_resolvido,
+               pb.id              AS id_parametro,
+               pb.nome            AS parametro_nome,
+               pb.tarifa_titular  AS parametro_tarifa_titular,
+               pb.tarifa_dependente AS parametro_tarifa_dependente,
+               pb.aceita_dependentes AS parametro_aceita_dependentes,
+               COALESCE(vb.qtd_tipos_beneficio, 0)        AS qtd_tipos_beneficio,
+               COALESCE(vb.valor_total_indenizacoes, 0)   AS valor_total_indenizacoes
+          FROM bss.sindicato s
+          LEFT JOIN LATERAL (
+              SELECT id, nome, tarifa_titular, tarifa_dependente, aceita_dependentes
+                FROM bss.parametros_boleto
+               WHERE id_sindicato = s.id AND ativo = TRUE
+               ORDER BY id DESC LIMIT 1
+          ) pb ON TRUE
+          LEFT JOIN (
+              SELECT id_sindicato,
+                     COUNT(*)         AS qtd_tipos_beneficio,
+                     SUM(valor_total) AS valor_total_indenizacoes
+                FROM bss.valor_beneficio_sindicato
+               GROUP BY id_sindicato
+          ) vb ON vb.id_sindicato = s.id
+         WHERE s.id = %s
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (id_sindicato,))
+            return cur.fetchone()

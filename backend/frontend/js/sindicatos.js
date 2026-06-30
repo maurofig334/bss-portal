@@ -88,7 +88,9 @@ async function carregar() {
 
       return `
         <tr class="border-t border-slate-100 hover:bg-slate-50">
-          <td class="px-3 py-2 font-medium text-slate-900">${nomeExibir}${subNome}</td>
+          <td class="px-3 py-2 font-medium text-slate-900">
+            <a href="/app/sindicato-detalhe.html?id=${s.id}" class="text-indigo-700 hover:underline">${nomeExibir}</a>${subNome}
+          </td>
           <td class="px-3 py-2 text-center text-slate-600 font-mono text-xs">${s.uf_abrangencia || "—"}</td>
           <td class="px-3 py-2 text-right font-mono">${fmtNum(s.qtd_trabalhadores_ativos)}</td>
           <td class="px-3 py-2 text-right font-mono text-slate-500">${fmtNum(s.qtd_trabalhadores_inativos)}</td>

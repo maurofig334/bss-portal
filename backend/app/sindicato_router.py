@@ -54,3 +54,17 @@ def detalhe(
     if usuario.perfil == "sindicato" and id_sindicato not in usuario.sindicatos:
         raise HTTPException(403, "Sindicato fora do escopo")
     return row
+
+
+@router.get("/{id_sindicato}/detalhe")
+def detalhe_completo(
+    id_sindicato: int,
+    usuario: Annotated[UsuarioInfo, Depends(usuario_logado)],
+):
+    """Detalhe completo do sindicato (com parametros_boleto resolvido + agregados)."""
+    row = sindicato_repo.buscar_detalhe(id_sindicato)
+    if not row:
+        raise HTTPException(404, "Sindicato não encontrado")
+    if usuario.perfil == "sindicato" and id_sindicato not in usuario.sindicatos:
+        raise HTTPException(403, "Sindicato fora do escopo")
+    return row
