@@ -11,7 +11,7 @@
 # Pra parar tudo: Ctrl+C aqui (mata uvicorn) + .\stop_bss.ps1 (mata tunnel)
 
 # ===== Configuracao =====
-$PROJETO      = "C:\Users\mauro\OneDrive\Documentos\Claude\Projects\BSS\backend"
+$PROJETO      = Join-Path $PSScriptRoot "backend"
 $CHAVE_SSH    = "C:\Users\mauro\Dropbox\Nexus\Adm\Oracle\nexus_openssh"
 $OCI_HOST     = "opc@140.238.178.43"
 $PORTA_LOCAL  = 15432

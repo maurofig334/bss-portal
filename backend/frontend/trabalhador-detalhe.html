@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Detalhe do Trabalhador — BSS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50">
+  <div class="flex min-h-screen">
+    <aside id="sidebar" class="w-56 flex-shrink-0"></aside>
+
+    <div class="flex-1 flex flex-col">
+      <header class="bg-white border-b border-slate-200">
+        <div class="px-6 py-4 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <a href="/app/trabalhadores.html" class="text-slate-400 hover:text-slate-700 text-xl">←</a>
+            <h1 id="titulo" class="text-xl font-semibold text-slate-800">Detalhe do Trabalhador</h1>
+          </div>
+          <div class="flex items-center gap-3 text-sm">
+            <span id="usuario-info" class="text-slate-500">—</span>
+            <button onclick="logout()" class="text-slate-500 hover:text-slate-800">Sair</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="flex-1 px-6 py-6 max-w-7xl">
+        <div id="loading" class="text-slate-500 text-center py-12">Carregando…</div>
+
+        <div id="conteudo" class="hidden space-y-4">
+          <!-- Dados do Trabalhador -->
+          <section class="bg-white rounded-lg border border-slate-200 p-5">
+            <div id="grid-basica" class="grid grid-cols-1 md:grid-cols-12 gap-y-3 gap-x-6 text-sm"></div>
+          </section>
+
+          <!-- Dados coletados no benefício -->
+          <section class="bg-white rounded-lg border border-slate-200">
+            <div class="px-5 py-3 bg-slate-50 border-b border-slate-200">
+              <h2 class="text-sm font-semibold text-slate-700">Dados coletados no benefício</h2>
+            </div>
+            <div id="grid-beneficio" class="p-5 grid grid-cols-1 md:grid-cols-12 gap-y-3 gap-x-6 text-sm"></div>
+          </section>
+
+          <!-- Dependentes relacionados -->
+          <section id="sec-dependentes" class="bg-white rounded-lg border border-slate-200 hidden">
+            <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <h2 class="text-sm font-semibold text-slate-700">Dependentes relacionados</h2>
+              <span id="dep-count" class="text-xs text-slate-500"></span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th class="px-5 py-2 text-left">Nome</th>
+                    <th class="px-3 py-2 text-left">CPF</th>
+                    <th class="px-3 py-2 text-center">Situação</th>
+                    <th class="px-3 py-2 text-center">Nascimento</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-dependentes"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- LOG -->
+          <section class="bg-white rounded-lg border border-slate-200">
+            <div class="px-5 py-3 bg-slate-50 border-b border-slate-200">
+              <h2 class="text-sm font-semibold text-slate-700">LOG</h2>
+            </div>
+            <div id="grid-log" class="p-5 grid grid-cols-1 md:grid-cols-12 gap-y-3 gap-x-6 text-sm"></div>
+          </section>
+        </div>
+
+        <div id="erro" class="hidden text-rose-600 text-center py-8"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/app/js/api.js"></script>
+  <script src="/app/js/sidebar.js"></script>
+  <script>renderizarSidebar("trabalhadores");</script>
+  <script src="/app/js/trabalhador-detalhe.js"></script>
+</body>
+</html>

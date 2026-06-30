@@ -157,27 +157,23 @@ function render(b) {
 
   // Trabalhadores — sanfona com sumário
   const qtdPessoas = b.itens.length;
-  const somaTaxas = b.itens.reduce((acc, it) => acc + Number(it.taxa_aplicada || 0), 0);
-  const totalLancamentos = b.itens.reduce((acc, it) => acc + Number(it.qtd_lancamentos || 1), 0);
-  const temDuplicacao = b.itens.some(it => (it.qtd_lancamentos || 1) > 1);
+  const qtdTit = b.itens.filter(it => !it.eh_dependente).length;
+  const qtdDep = qtdPessoas - qtdTit;
   document.getElementById("qtd-itens").innerHTML =
-    `<b>${qtdPessoas.toLocaleString("pt-BR")}</b> pessoa(s) · `
-    + `total <b>${brl(somaTaxas)}</b>`
-    + (temDuplicacao ? ` · <span class="text-amber-700">${totalLancamentos} lançamentos (com duplicações)</span>` : "")
+    `<b>${qtdPessoas.toLocaleString("pt-BR")}</b> pessoa(s)`
+    + ` <span class="text-slate-500">(${qtdTit} titular${qtdTit !== 1 ? "es" : ""}`
+    + (qtdDep > 0 ? ` + ${qtdDep} dependente${qtdDep > 1 ? "s" : ""}` : "")
+    + `)</span>`
     + ` <span class="ml-2 text-slate-400">▸ clique pra abrir</span>`;
   const tbody = document.getElementById("tbody-itens");
   if (qtdPessoas === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-center text-slate-400">Sem trabalhadores/dependentes vinculados</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="px-3 py-6 text-center text-slate-400">Sem trabalhadores/dependentes vinculados</td></tr>`;
   } else {
-    tbody.innerHTML = b.itens.map(it => {
-      const dupBadge = (it.qtd_lancamentos || 1) > 1
-        ? `<span class="ml-2 px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-xs">${it.qtd_lancamentos}×</span>`
-        : "";
-      return `
+    tbody.innerHTML = b.itens.map(it => `
       <tr class="border-t border-slate-100 hover:bg-slate-50">
-        <td class="px-3 py-2">
-          <a href="/app/trabalhadores.html?busca=${encodeURIComponent(it.cpf)}" class="text-indigo-700 hover:underline">${it.nome_completo || "—"}</a>${dupBadge}
-        </td>
+        <td class="px-3 py-2">${it.id_trabalhador
+          ? `<a href="/app/trabalhador-detalhe.html?id=${it.id_trabalhador}" class="text-indigo-700 hover:underline">${it.nome_completo || "—"}</a>`
+          : (it.nome_completo || "—")}</td>
         <td class="px-3 py-2 font-mono text-xs">${fmtCpf(it.cpf)}</td>
         <td class="px-3 py-2 text-center">
           <span class="inline-block px-2 py-0.5 rounded text-xs ${it.eh_dependente ? "bg-purple-100 text-purple-800" : "bg-slate-100 text-slate-700"}">
@@ -185,10 +181,9 @@ function render(b) {
           </span>
         </td>
         <td class="px-3 py-2 text-center text-xs">${(it.situacao || "—").toUpperCase()}</td>
-        <td class="px-3 py-2 text-right font-mono">${brl(it.taxa_aplicada)}</td>
         <td class="px-3 py-2 text-center text-xs text-slate-500">${fmtData(it.data_admissao)}</td>
       </tr>
-    `;}).join("");
+    `).join("");
   }
 
   // Botões de ação conforme status:

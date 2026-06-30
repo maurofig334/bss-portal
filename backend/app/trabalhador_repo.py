@@ -16,6 +16,7 @@ from .database import get_pg_connection
 ORDER_BY_OK = {
     "nome_completo", "cpf", "empresa", "sindicato",
     "situacao", "ultimo_pagamento_em", "atualizado_em",
+    "trab_uf",
 }
 
 
@@ -154,3 +155,48 @@ def buscar_dependentes(cpf_titular: str) -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(sql, (cpf_titular,))
             return list(cur.fetchall())
+
+
+def buscar_detalhe(id: int) -> dict[str, Any] | None:
+    """
+    Detalhe completo do trabalhador pra tela de detalhe (#37).
+    Lê bss.trabalhador direto (não a view) porque precisa do endereço
+    completo, criado_em e id_legado_uuid — campos que v_trabalhador não expõe.
+    """
+    sql = """
+        SELECT
+            t.id, t.cpf, t.nome_completo, t.titularidade, t.cpf_titular,
+            t.situacao, t.data_nascimento, t.data_admissao, t.data_demissao,
+            t.ultimo_pagamento_em, t.mes_ultimo_vinculo,
+            t.telefone, t.email,
+            t.logradouro, t.numero, t.complemento, t.bairro,
+            t.cidade, t.uf, t.cep,
+            t.qtd_dependentes_ativos,
+            t.id_empresa_atual,   e.razao_social AS empresa,   e.cnpj AS empresa_cnpj,
+            t.id_sindicato_atual, s.razao_social AS sindicato,  s.categoria AS sindicato_categoria,
+            t.criado_em, t.atualizado_em, t.id_legado_uuid
+          FROM bss.trabalhador t
+          LEFT JOIN bss.empresa   e ON e.id = t.id_empresa_atual
+          LEFT JOIN bss.sindicato s ON s.id = t.id_sindicato_atual
+         WHERE t.id = %s
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (id,))
+            return cur.fetchone()
+
+
+def buscar_titular(cpf: str) -> dict[str, Any] | None:
+    """Acha o titular (id + nome) por CPF — pra link do dependente -> titular."""
+    if not cpf:
+        return None
+    sql = """
+        SELECT id, nome_completo
+          FROM bss.trabalhador
+         WHERE cpf = %s AND titularidade = 'titular'
+         LIMIT 1
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (cpf,))
+            return cur.fetchone()

@@ -76,6 +76,35 @@ def listar_dependentes(
     return trabalhador_repo.buscar_dependentes(cpf)
 
 
+@router.get("/{id_trabalhador}/detalhe")
+def detalhe_completo(
+    id_trabalhador: int,
+    usuario: Annotated[UsuarioInfo, Depends(usuario_logado)],
+):
+    """
+    Detalhe completo do trabalhador (#37): dados + endereço + dependentes
+    relacionados (se titular) ou titular vinculado (se dependente).
+    """
+    row = trabalhador_repo.buscar_detalhe(id_trabalhador)
+    if not row:
+        raise HTTPException(404, "Trabalhador não encontrado")
+
+    # RLS: empresa só vê trabalhador das suas empresas; sindicato só do seu sind
+    if usuario.perfil == "empresa" and row.get("id_empresa_atual") not in usuario.empresas:
+        raise HTTPException(403, "Trabalhador fora do escopo do usuário")
+    if usuario.perfil == "sindicato" and row.get("id_sindicato_atual") not in usuario.sindicatos:
+        raise HTTPException(403, "Trabalhador fora do escopo do usuário")
+
+    if row.get("titularidade") == "dependente":
+        row["dependentes"] = []
+        row["titular"] = trabalhador_repo.buscar_titular(row.get("cpf_titular"))
+    else:
+        row["dependentes"] = trabalhador_repo.buscar_dependentes(row.get("cpf"))
+        row["titular"] = None
+
+    return row
+
+
 @router.get("/{id_trabalhador}")
 def detalhe(
     id_trabalhador: int,

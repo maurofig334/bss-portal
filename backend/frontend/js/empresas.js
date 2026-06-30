@@ -120,4 +120,11 @@ function limparFiltros() {
   recarregar();
 }
 
+// Permite chegar com filtro pré-aplicado via URL (ex.: link de Empresa no
+// detalhe do trabalhador -> empresas.html?busca=<cnpj>).
+(function aplicarFiltroDaUrl() {
+  const busca = new URL(window.location.href).searchParams.get("busca");
+  if (busca) document.getElementById("f-busca").value = busca;
+})();
+
 carregar();
