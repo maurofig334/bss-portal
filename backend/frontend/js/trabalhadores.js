@@ -88,21 +88,132 @@ function badgeTit(t) {
   return `<span class="inline-block w-6 h-6 leading-6 rounded-full text-center text-xs font-bold bg-slate-100 text-slate-600" title="Titular sem dependentes">T</span>`;
 }
 
-function ler() {
-  return {
-    busca:     document.getElementById("f-busca").value.trim(),
-    situacao:  document.getElementById("f-situacao").value,
-    uf:        document.getElementById("f-uf").value.trim().toUpperCase(),
-  };
+// ==========================================================================
+// Grid (padrão OCSP): colunas dinâmicas, ordenação server-side, filtros.
+// ==========================================================================
+const TELA = "trabalhadores";
+const ALINHA = { left: "text-left", center: "text-center", right: "text-right" };
+
+// Config de colunas. sort = chave aceita pelo ORDER BY do backend (ou null).
+const COLUNAS = [
+  { id: "tit", label: "Tit", align: "center", fixa: true, sort: null, render: badgeTit },
+  { id: "cpf", label: "CPF", align: "left", sort: "cpf",
+    render: t => `<span class="font-mono text-xs">${formatarCPF(t.cpf)}</span>` },
+  { id: "nome", label: "Nome", align: "left", sort: "nome_completo",
+    render: t => `<a href="/app/trabalhador-detalhe.html?id=${t.id}" class="text-indigo-700 hover:underline font-medium" onclick="event.stopPropagation()">${t.nome_completo || "—"}</a>` },
+  { id: "empresa", label: "Empresa", align: "left", sort: "empresa",
+    render: t => `<span class="text-slate-700">${t.empresa || "—"}</span>` },
+  { id: "sindicato", label: "Sindicato", align: "left", sort: "sindicato",
+    render: t => `<span class="text-xs text-slate-600">${t.sindicato || "—"}</span>` },
+  { id: "uf", label: "UF", align: "center", sort: "trab_uf",
+    render: t => t.trab_uf || "—" },
+  { id: "situacao", label: "Situação", align: "center", sort: "situacao",
+    render: t => badgeSituacao(t.situacao) },
+  { id: "ultimo_pgto", label: "Último pgto", align: "right", sort: "ultimo_pagamento_em",
+    render: t => `<span class="text-xs text-slate-500">${formatarData(t.ultimo_pagamento_em)}</span>` },
+];
+
+// Campos do Filtro avançado (Onda 1: mapeiam direto pros params do backend).
+const FILTRO_CAMPOS = [
+  { id: "situacao", label: "Situação", tipo: "select", operadores: ["é igual a"],
+    opcoes: [{ value: "ativo", label: "Ativo" }, { value: "inativo", label: "Inativo" }, { value: "carencia", label: "Carência" }] },
+  { id: "uf", label: "UF", tipo: "text", operadores: ["é igual a", "preenchido", "vazio"] },
+];
+
+let ordenacao = { campo: "nome_completo", desc: false };
+let condicoes = [];                              // filtro avançado ativo
+let colsOcultas = gridLerColunasOcultas(TELA);
+
+function colsVisiveis() { return COLUNAS.filter(c => !colsOcultas.includes(c.id)); }
+
+function condicoesParaParams(conds) {
+  const p = {};
+  for (const c of conds) {
+    if (c.campo === "situacao" && c.operador === "é igual a" && c.valor) p.situacao = c.valor;
+    if (c.campo === "uf") {
+      if (c.operador === "é igual a" && c.valor) p.uf = String(c.valor).toUpperCase();
+    }
+  }
+  return p;
 }
 
-function montarQuery(extras = {}) {
-  const f = { ...ler(), ...extras, pagina, por_pagina: 50 };
+function montarQuery() {
   const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(f)) {
-    if (v !== "" && v != null) params.append(k, v);
-  }
+  const busca = document.getElementById("f-busca").value.trim();
+  if (busca) params.append("busca", busca);
+
+  const adv = condicoesParaParams(condicoes);
+  const preset = document.getElementById("f-preset").value;
+  const situacao = adv.situacao || preset;     // filtro avançado tem prioridade
+  if (situacao) params.append("situacao", situacao);
+  if (adv.uf) params.append("uf", adv.uf);
+
+  params.append("ordem", ordenacao.campo);
+  if (ordenacao.desc) params.append("desc", "true");
+  params.append("pagina", pagina);
+  params.append("por_pagina", 50);
   return params.toString();
+}
+
+function renderThead() {
+  document.getElementById("thead-row").innerHTML = colsVisiveis().map(c => {
+    const cls = `px-3 py-2 ${ALINHA[c.align]} ${c.sort ? "cursor-pointer select-none hover:text-slate-700" : ""}`;
+    const seta = c.sort ? gridSeta(c.sort, ordenacao) : "";
+    const onclick = c.sort ? `onclick="ordenarPor('${c.sort}')"` : "";
+    return `<th class="${cls}" ${onclick}>${c.label}${seta}</th>`;
+  }).join("");
+}
+
+function renderLinhas(linhas) {
+  const cols = colsVisiveis();
+  document.getElementById("tbody").innerHTML = linhas.map(t => `
+    <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer" onclick="abrirTrab(${t.id})">
+      ${cols.map(c => `<td class="px-3 py-2 ${ALINHA[c.align]}">${c.render(t)}</td>`).join("")}
+    </tr>`).join("");
+}
+
+function abrirTrab(id) { window.location.href = `/app/trabalhador-detalhe.html?id=${id}`; }
+
+function ordenarPor(campo) {
+  if (ordenacao.campo === campo) ordenacao.desc = !ordenacao.desc;
+  else ordenacao = { campo, desc: false };
+  carregar();
+}
+
+function abrirColunas() {
+  gridAbrirModalColunas({
+    colunas: COLUNAS.map(c => ({ id: c.id, label: c.label, fixa: c.fixa })),
+    ocultas: colsOcultas,
+    onSalvar: (novas) => { colsOcultas = novas; gridSalvarColunasOcultas(TELA, novas); renderThead(); carregar(); },
+  });
+}
+
+function atualizarBadgeFiltro() {
+  const b = document.getElementById("filtro-badge");
+  if (condicoes.length) { b.textContent = condicoes.length; b.classList.remove("hidden"); }
+  else b.classList.add("hidden");
+}
+
+function abrirFiltro() {
+  gridAbrirModalFiltro({
+    campos: FILTRO_CAMPOS,
+    condicoes,
+    onAplicar: (conds) => { condicoes = conds; atualizarBadgeFiltro(); recarregar(); },
+    onSalvarComo: (nome, conds) => {
+      const l = gridLerFiltrosSalvos(TELA); l.push({ nome, condicoes: conds });
+      gridSalvarFiltrosSalvos(TELA, l);
+      condicoes = conds; atualizarBadgeFiltro(); recarregar();
+    },
+  });
+}
+
+function abrirMeusFiltros(ev) {
+  gridAbrirMeusFiltros({
+    ancora: ev.currentTarget,
+    lista: gridLerFiltrosSalvos(TELA),
+    onAplicar: (conds) => { condicoes = conds; atualizarBadgeFiltro(); recarregar(); },
+    onExcluir: (i) => { const l = gridLerFiltrosSalvos(TELA); l.splice(i, 1); gridSalvarFiltrosSalvos(TELA, l); },
+  });
 }
 
 async function recarregar() {
@@ -111,42 +222,30 @@ async function recarregar() {
 }
 
 async function carregar() {
+  renderThead();
   const tbody = document.getElementById("tbody");
-  tbody.innerHTML = `<tr><td colspan="8" class="px-3 py-6 text-center text-slate-400">Carregando…</td></tr>`;
+  const ncols = colsVisiveis().length;
+  tbody.innerHTML = `<tr><td colspan="${ncols}" class="px-3 py-6 text-center text-slate-400">Carregando…</td></tr>`;
   document.getElementById("tempo").textContent = "";
 
   const t0 = performance.now();
   try {
     const data = await apiFetch(`/trabalhadores?${montarQuery()}`);
-    const t1 = performance.now();
-    const dur = (t1 - t0).toFixed(0);
+    const dur = (performance.now() - t0).toFixed(0);
 
-    document.getElementById("tempo").textContent = `⚡ ${dur}ms (${data.linhas.length} de ${data.total.toLocaleString("pt-BR")})`;
-    document.getElementById("stats").textContent = `${data.total.toLocaleString("pt-BR")} trabalhadores encontrados`;
+    document.getElementById("tempo").textContent = `⚡ ${dur}ms`;
+    document.getElementById("subtitulo").textContent =
+      `${data.total.toLocaleString("pt-BR")} trabalhadores · clique numa linha para abrir`;
 
     if (data.linhas.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" class="px-3 py-6 text-center text-slate-400">Nenhum resultado</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="${ncols}" class="px-3 py-10 text-center text-slate-400">Nenhum resultado</td></tr>`;
       document.getElementById("paginacao").innerHTML = "";
       return;
     }
-
-    tbody.innerHTML = data.linhas.map(t => `
-      <tr class="border-t border-slate-100 hover:bg-slate-50">
-        <td class="px-3 py-2 text-center">${badgeTit(t)}</td>
-        <td class="px-3 py-2 font-mono text-xs">${formatarCPF(t.cpf)}</td>
-        <td class="px-3 py-2 font-medium text-slate-900">${t.nome_completo || "—"}</td>
-        <td class="px-3 py-2 text-slate-700">${t.empresa || "—"}</td>
-        <td class="px-3 py-2 text-slate-600 text-xs">${t.sindicato || "—"}</td>
-        <td class="px-3 py-2 text-center">${t.trab_uf || "—"}</td>
-        <td class="px-3 py-2 text-center">${badgeSituacao(t.situacao)}</td>
-        <td class="px-3 py-2 text-right text-xs text-slate-500">${formatarData(t.ultimo_pagamento_em)}</td>
-      </tr>
-    `).join("");
-
+    renderLinhas(data.linhas);
     montarPaginacao(data);
-
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="8" class="px-3 py-6 text-center text-rose-600">Erro: ${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${ncols}" class="px-3 py-6 text-center text-rose-600">Erro: ${e.message}</td></tr>`;
   }
 }
 
@@ -180,12 +279,14 @@ function agendarBusca() {
 
 function limparFiltros() {
   document.getElementById("f-busca").value = "";
-  document.getElementById("f-situacao").value = "";
-  document.getElementById("f-uf").value = "";
+  condicoes = [];
+  atualizarBadgeFiltro();
+  document.getElementById("f-preset").value = "ativo";
   recarregar();
 }
 
 // Carga inicial
+atualizarBadgeFiltro();
 
 
 // ==========================
