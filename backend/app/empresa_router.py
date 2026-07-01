@@ -47,6 +47,31 @@ def listar(
     )
 
 
+@router.get("/{id_empresa}/detalhe")
+def detalhe_completo(
+    id_empresa: int,
+    usuario: Annotated[UsuarioInfo, Depends(usuario_logado)],
+):
+    """Detalhe completo da empresa (endereço + caches + datas)."""
+    if usuario.perfil == "empresa" and id_empresa not in usuario.empresas:
+        raise HTTPException(403, "Empresa fora do escopo")
+    row = empresa_repo.buscar_detalhe(id_empresa)
+    if not row:
+        raise HTTPException(404, "Empresa não encontrada")
+    return row
+
+
+@router.get("/{id_empresa}/usuarios")
+def usuarios(
+    id_empresa: int,
+    usuario: Annotated[UsuarioInfo, Depends(usuario_logado)],
+):
+    """Usuários com acesso à empresa (aba de relacionamento)."""
+    if usuario.perfil == "empresa" and id_empresa not in usuario.empresas:
+        raise HTTPException(403, "Empresa fora do escopo")
+    return empresa_repo.listar_usuarios(id_empresa)
+
+
 @router.get("/{id_empresa}")
 def detalhe(
     id_empresa: int,

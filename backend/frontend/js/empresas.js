@@ -83,7 +83,9 @@ async function carregar() {
     tbody.innerHTML = data.linhas.map(e => `
       <tr class="border-t border-slate-100 hover:bg-slate-50">
         <td class="px-3 py-2 font-mono text-xs">${fmtCNPJ(e.cnpj)}</td>
-        <td class="px-3 py-2 font-medium text-slate-900">${e.razao_social || "—"}</td>
+        <td class="px-3 py-2 font-medium text-slate-900">
+          <a href="/app/empresa-detalhe.html?id=${e.id}" class="text-indigo-700 hover:underline">${e.razao_social || "—"}</a>
+        </td>
         <td class="px-3 py-2 text-slate-600">${(e.cidade || "—") + (e.uf ? "/" + e.uf : "")}</td>
         <td class="px-3 py-2 text-right font-mono">${(e.qtd_trabalhadores_ativos || 0).toLocaleString("pt-BR")}</td>
         <td class="px-3 py-2 text-center">${badgeStatus(e.status)}</td>

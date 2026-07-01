@@ -96,3 +96,32 @@ def buscar_por_id(id_empresa: int) -> dict[str, Any] | None:
         with conn.cursor() as cur:
             cur.execute(sql, (id_empresa,))
             return cur.fetchone()
+
+
+def buscar_detalhe(id_empresa: int) -> dict[str, Any] | None:
+    """
+    Detalhe completo da empresa pra tela de detalhe.
+    Lê a tabela direto (não a view) por causa do endereço completo
+    (logradouro/numero/bairro/cep) que v_empresa não expõe.
+    """
+    sql = "SELECT * FROM bss.empresa WHERE id = %s"
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (id_empresa,))
+            return cur.fetchone()
+
+
+def listar_usuarios(id_empresa: int) -> list[dict[str, Any]]:
+    """Usuários com acesso à empresa (via bss.usuario_empresa)."""
+    sql = """
+        SELECT u.id, u.nome, u.email, u.perfil,
+               u.ativo, ue.ativo AS acesso_ativo
+          FROM bss.usuario_empresa ue
+          JOIN bss_users u ON u.id = ue.id_usuario
+         WHERE ue.id_empresa = %s
+         ORDER BY u.nome
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (id_empresa,))
+            return list(cur.fetchall())
