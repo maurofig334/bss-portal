@@ -93,7 +93,7 @@ function render(t) {
 
   // Link da empresa -> listagem filtrada por CNPJ; sindicato -> tela de detalhe
   const linkEmpresa = t.empresa
-    ? linkEntidade(t.empresa, t.empresa_cnpj ? `/app/empresas.html?busca=${encodeURIComponent(t.empresa_cnpj)}` : null)
+    ? linkEntidade(t.empresa, t.id_empresa_atual ? `/app/empresa-detalhe.html?id=${t.id_empresa_atual}` : null)
     : null;
   const linkSindicato = t.sindicato
     ? linkEntidade(t.sindicato, t.id_sindicato_atual ? `/app/sindicato-detalhe.html?id=${t.id_sindicato_atual}` : null)
@@ -133,23 +133,8 @@ function render(t) {
     par("Endereço Principal", endereco, "md:col-span-12"),
   ].join("");
 
-  // Dependentes relacionados (só pra titular com dependentes)
-  const deps = t.dependentes || [];
-  if (!ehDependente && deps.length) {
-    document.getElementById("sec-dependentes").classList.remove("hidden");
-    document.getElementById("dep-count").textContent =
-      `${deps.length} dependente${deps.length > 1 ? "s" : ""}`;
-    document.getElementById("tbody-dependentes").innerHTML = deps.map(d => `
-      <tr class="border-t border-slate-100 hover:bg-slate-50">
-        <td class="px-5 py-2">
-          <a href="/app/trabalhador-detalhe.html?id=${d.id}" class="text-indigo-700 hover:underline">${d.nome_completo || "—"}</a>
-        </td>
-        <td class="px-3 py-2 font-mono text-xs">${fmtCpf(d.cpf)}</td>
-        <td class="px-3 py-2 text-center">${badgeSituacao(d.situacao)}</td>
-        <td class="px-3 py-2 text-center text-xs text-slate-500">${fmtData(d.data_nascimento)}</td>
-      </tr>
-    `).join("");
-  }
+  // Relacionamentos (abas inferiores)
+  renderRelacionamentos(t, ehDependente);
 
   // LOG
   document.getElementById("grid-log").innerHTML = [
@@ -170,6 +155,76 @@ function montarEndereco(t) {
   return linhas.length
     ? linhas.map(l => `<div>${l}</div>`).join("")
     : '<span class="text-slate-400">Endereço não cadastrado</span>';
+}
+
+/* ----------------------- Abas de relacionamento -------------------------- */
+
+function renderRelacionamentos(t, ehDependente) {
+  const deps = t.dependentes || [];
+  document.getElementById("rcount-dependentes").textContent = deps.length;
+
+  const tb = document.getElementById("tbody-dependentes");
+  if (deps.length) {
+    tb.innerHTML = deps.map(d => `
+      <tr class="border-t border-slate-100 hover:bg-slate-50">
+        <td class="px-5 py-2">
+          <a href="/app/trabalhador-detalhe.html?id=${d.id}" class="text-indigo-700 hover:underline">${d.nome_completo || "—"}</a>
+        </td>
+        <td class="px-3 py-2 font-mono text-xs">${fmtCpf(d.cpf)}</td>
+        <td class="px-3 py-2 text-center">${badgeSituacao(d.situacao)}</td>
+        <td class="px-3 py-2 text-center text-xs text-slate-500">${fmtData(d.data_nascimento)}</td>
+      </tr>`).join("");
+  } else {
+    const msg = ehDependente
+      ? "Este trabalhador é um dependente — não possui dependentes próprios."
+      : "Nenhum dependente vinculado.";
+    tb.innerHTML = `<tr><td colspan="4" class="px-5 py-8 text-center text-slate-400">${msg}</td></tr>`;
+  }
+
+  // Boletos e Benefícios: mockup (a serem religados aos endpoints reais).
+  document.getElementById("rel-boletos").innerHTML = mockTabela(
+    ["Nº Boleto", "Competência", "Valor", "Vencimento", "Status"],
+    [
+      ["000123456-7", "05/2026", "R$ 142,00", "10/06/2026", "Pago"],
+      ["000123410-2", "04/2026", "R$ 142,00", "10/05/2026", "Pago"],
+      ["000123380-9", "03/2026", "R$ 142,00", "10/04/2026", "Pago"],
+    ],
+    "Boletos do trabalhador — dados de exemplo (mockup)."
+  );
+  document.getElementById("rel-beneficios").innerHTML = mockTabela(
+    ["Tipo de Benefício", "Sindicato", "Valor", "Situação"],
+    [
+      ["Auxílio funeral", "SIEMACO SP - ASSEIO", "R$ 5.000,00", "Ativo"],
+      ["Cesta natalidade", "SIEMACO SP - ASSEIO", "R$ 300,00", "Ativo"],
+    ],
+    "Benefícios do trabalhador — dados de exemplo (mockup)."
+  );
+}
+
+function mockTabela(cols, linhas, nota) {
+  const thead = cols.map(c => `<th class="px-5 py-2 text-left">${c}</th>`).join("");
+  const body = linhas.map(r => `
+    <tr class="border-t border-slate-100">
+      ${r.map(v => `<td class="px-5 py-2 text-slate-600">${v}</td>`).join("")}
+    </tr>`).join("");
+  return `
+    <div class="px-5 py-2 bg-amber-50 border-b border-amber-200 text-xs text-amber-800">⚠ ${nota}</div>
+    <div class="overflow-x-auto opacity-70">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-slate-500"><tr>${thead}</tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
+}
+
+function trocarRel(qual) {
+  const abas = ["dependentes", "boletos", "beneficios"];
+  const ativa = "px-4 py-2.5 text-sm font-medium text-slate-800 border-b-2 border-indigo-600 whitespace-nowrap";
+  const inativa = "px-4 py-2.5 text-sm text-slate-500 hover:text-slate-800 whitespace-nowrap";
+  abas.forEach(a => {
+    document.getElementById(`rtab-${a}`).className = (a === qual ? ativa : inativa);
+    document.getElementById(`rel-${a}`).classList.toggle("hidden", a !== qual);
+  });
 }
 
 carregar();
