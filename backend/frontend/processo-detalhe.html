@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Detalhe do Benefício — BSS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50">
+  <div class="flex min-h-screen">
+    <aside id="sidebar" class="w-56 flex-shrink-0"></aside>
+
+    <div class="flex-1 flex flex-col">
+      <header class="bg-white border-b border-slate-200">
+        <div class="px-6 py-4 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <a href="/app/processos.html" class="text-slate-400 hover:text-slate-700 text-xl">←</a>
+            <h1 id="titulo" class="text-xl font-semibold text-slate-800">Detalhe do Benefício</h1>
+            <span id="status-badge"></span>
+          </div>
+          <div class="flex items-center gap-3 text-sm">
+            <span id="usuario-info" class="text-slate-500">—</span>
+            <button onclick="logout()" class="text-slate-500 hover:text-slate-800">Sair</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="flex-1 px-6 py-6 max-w-7xl">
+        <div id="loading" class="text-slate-500 text-center py-12">Carregando…</div>
+
+        <div id="conteudo" class="hidden space-y-4">
+          <!-- Aviso de bloqueio (regularidade) -->
+          <div id="aviso-bloqueio" class="hidden rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"></div>
+
+          <!-- Cabeçalho do benefício -->
+          <section class="bg-white rounded-lg border border-slate-200 p-5">
+            <div id="grid-beneficio" class="grid grid-cols-1 md:grid-cols-12 gap-y-3 gap-x-6 text-sm"></div>
+          </section>
+
+          <!-- Trabalhador / Beneficiário -->
+          <section class="bg-white rounded-lg border border-slate-200">
+            <div class="px-5 py-3 bg-slate-50 border-b border-slate-200">
+              <h2 class="text-sm font-semibold text-slate-700">Trabalhador / Dependente e Beneficiário</h2>
+            </div>
+            <div id="grid-pessoas" class="p-5 grid grid-cols-1 md:grid-cols-12 gap-y-3 gap-x-6 text-sm"></div>
+          </section>
+
+          <!-- Dados bancários -->
+          <section id="sec-bancarios" class="hidden bg-white rounded-lg border border-slate-200">
+            <div class="px-5 py-3 bg-slate-50 border-b border-slate-200">
+              <h2 class="text-sm font-semibold text-slate-700">Dados bancários</h2>
+            </div>
+            <div id="grid-bancarios" class="p-5 grid grid-cols-1 md:grid-cols-12 gap-y-3 gap-x-6 text-sm"></div>
+          </section>
+
+          <!-- Relacionamentos (abas inferiores) -->
+          <section class="bg-white rounded-lg border border-slate-200">
+            <div class="border-b border-slate-200 flex items-center gap-1 px-3 overflow-x-auto">
+              <button id="rtab-documentos" onclick="trocarRel('documentos')"
+                      class="px-4 py-2.5 text-sm font-medium text-slate-800 border-b-2 border-indigo-600 whitespace-nowrap">
+                Documentos <span id="rcount-documentos" class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600">·</span>
+              </button>
+              <button id="rtab-mensagens" onclick="trocarRel('mensagens')"
+                      class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-800 whitespace-nowrap">Mensagens</button>
+              <button id="rtab-pagamentos" onclick="trocarRel('pagamentos')"
+                      class="px-4 py-2.5 text-sm text-slate-500 hover:text-slate-800 whitespace-nowrap">Contas a pagar</button>
+            </div>
+            <div id="rel-documentos" class="min-h-[140px]"></div>
+            <div id="rel-mensagens" class="hidden min-h-[140px]"></div>
+            <div id="rel-pagamentos" class="hidden min-h-[140px]"></div>
+          </section>
+
+          <!-- LOG -->
+          <section class="bg-white rounded-lg border border-slate-200">
+            <div class="px-5 py-3 bg-slate-50 border-b border-slate-200">
+              <h2 class="text-sm font-semibold text-slate-700">LOG</h2>
+            </div>
+            <div id="grid-log" class="p-5 grid grid-cols-1 md:grid-cols-12 gap-y-3 gap-x-6 text-sm"></div>
+          </section>
+        </div>
+
+        <div id="erro" class="hidden text-rose-600 text-center py-8"></div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/app/js/api.js"></script>
+  <script src="/app/js/sidebar.js"></script>
+  <script>renderizarSidebar("processos");</script>
+  <script src="/app/js/processo-detalhe.js"></script>
+</body>
+</html>

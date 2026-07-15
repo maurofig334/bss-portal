@@ -114,3 +114,135 @@ def buscar_por_id(id_processo: int) -> dict[str, Any] | None:
             )
             processo["mensagens"] = cur.fetchall()
     return processo
+
+
+def buscar_detalhe(id_processo: int) -> dict[str, Any] | None:
+    """
+    Detalhe completo do processo pra tela de detalhe (#22).
+
+    v_processo já resolve empresa/sindicato/trabalhador/tipo/status; aqui
+    complementamos com os campos que a view não expõe (endereço e telefone do
+    beneficiário, valores, causa mortis) e anexamos os dados bancários.
+    """
+    sql = """
+        SELECT v.*,
+               p.beneficiario_telefone,
+               p.beneficiario_data_nasc,
+               p.beneficiario_endereco_logradouro,
+               p.beneficiario_endereco_numero,
+               p.beneficiario_endereco_complemento,
+               p.beneficiario_endereco_bairro,
+               p.beneficiario_endereco_cidade,
+               p.beneficiario_endereco_uf,
+               p.beneficiario_endereco_cep,
+               p.valor_solicitado,
+               p.valor_aprovado,
+               p.qtd_parcelas,
+               p.causa_mortis,
+               p.situacao_acionamento,
+               p.bloqueio_motivo,
+               p.id_legado_uuid
+          FROM bss.v_processo v
+          JOIN bss.processo_beneficio p ON p.id = v.id
+         WHERE v.id = %s
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (id_processo,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            cur.execute(
+                "SELECT * FROM bss.dados_bancarios WHERE id_processo = %s "
+                "ORDER BY id LIMIT 1",
+                (id_processo,),
+            )
+            row["dados_bancarios"] = cur.fetchone()
+    return row
+
+
+def listar_documentos(id_processo: int, id_tipo_beneficio: int | None) -> list[dict[str, Any]]:
+    """
+    CHECKLIST de documentos do processo.
+
+    Cruza a REGRA (bss.tipo_beneficio_documento — o que o tipo de benefício
+    exige) com o ANEXADO (bss.processo_documento — a versão mais recente de
+    cada tipo). Um documento nunca anexado vem com status NULL, o que a UI
+    mostra como pendente de envio.
+
+    Ordem: pela `ordem` da regra (obrigatórios primeiro, 'Outros' por último).
+    """
+    if not id_tipo_beneficio:
+        return []
+    sql = """
+        SELECT tbd.id           AS id_tipo_documento,
+               tbd.codigo,
+               tbd.nome,
+               tbd.obrigatorio,
+               tbd.ordem,
+               pd.id            AS id_processo_documento,
+               pd.status,
+               pd.versao,
+               pd.observacao,
+               pd.avaliado_em,
+               mr.codigo        AS motivo_rejeicao_codigo,
+               mr.nome          AS motivo_rejeicao,
+               d.nome_original,
+               d.arquivo_url,
+               d.mime_type,
+               d.tamanho_bytes,
+               d.criado_em      AS enviado_em
+          FROM bss.tipo_beneficio_documento tbd
+          LEFT JOIN LATERAL (
+              SELECT x.*
+                FROM bss.processo_documento x
+               WHERE x.id_processo = %(id_processo)s
+                 AND x.id_tipo_documento = tbd.id
+               ORDER BY x.versao DESC
+               LIMIT 1
+          ) pd ON TRUE
+          LEFT JOIN bss.motivo_rejeicao_documento mr ON mr.id = pd.id_motivo_rejeicao
+          LEFT JOIN bss.documento d ON d.id = pd.id_documento
+         WHERE tbd.id_tipo_beneficio = %(id_tipo)s
+           AND tbd.ativo
+         ORDER BY tbd.ordem, tbd.nome
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, {"id_processo": id_processo, "id_tipo": id_tipo_beneficio})
+            return list(cur.fetchall())
+
+
+def listar_pagamentos(id_processo: int) -> list[dict[str, Any]]:
+    """Parcelas de contas a pagar do processo (aba de relacionamento)."""
+    sql = """
+        SELECT id, numero_pagamento, parcela, valor, forma_pagamento, status,
+               data_prevista, data_vencimento, data_pagamento,
+               beneficiario_nome, documento
+          FROM bss.pagamento
+         WHERE id_processo = %s
+         ORDER BY parcela, id
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (id_processo,))
+            return list(cur.fetchall())
+
+
+def listar_mensagens(id_processo: int, incluir_internas: bool = True) -> list[dict[str, Any]]:
+    """
+    Mensagens do processo (canal cliente ↔ analista).
+    `interno=TRUE` é visível só pro staff — o portal do cliente não mostra.
+    """
+    sql = """
+        SELECT id, titulo, corpo, interno, id_usuario, criado_em
+          FROM bss.processo_mensagem
+         WHERE id_processo = %s
+    """
+    if not incluir_internas:
+        sql += " AND interno = FALSE"
+    sql += " ORDER BY criado_em ASC"
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (id_processo,))
+            return list(cur.fetchall())

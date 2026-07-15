@@ -85,9 +85,12 @@ async function carregar() {
     tbody.innerHTML = data.linhas.map(p => {
       const cor = p.status_cor || "#64748B";
       const semResposta = p.ultima_atualizacao_portal_em ? "🔔" : "";
+      // (abrirProcesso está definido no fim do arquivo)
       return `
-        <tr class="border-t border-slate-100 hover:bg-slate-50">
-          <td class="px-3 py-2 font-mono text-xs">${semResposta} ${p.protocolo || p.numero_processo || "—"}</td>
+        <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer" onclick="abrirProcesso(${p.id})">
+          <td class="px-3 py-2 font-mono text-xs">${semResposta}
+            <a href="/app/processo-detalhe.html?id=${p.id}" class="text-indigo-700 hover:underline" onclick="event.stopPropagation()">${p.protocolo || p.numero_processo || "—"}</a>
+          </td>
           <td class="px-3 py-2">
             <div class="font-medium text-slate-900">${p.trabalhador_nome || "—"}</div>
             <div class="text-[11px] text-slate-500 font-mono">${fmtCPF(p.trabalhador_cpf)}</div>
@@ -124,6 +127,7 @@ function montarPaginacao(data) {
 }
 
 function irPagina(p) { pagina = Math.max(1, p); carregar(); }
+function abrirProcesso(id) { window.location.href = `/app/processo-detalhe.html?id=${id}`; }
 function agendarBusca() { clearTimeout(timer); timer = setTimeout(recarregar, 300); }
 function limparFiltros() {
   document.getElementById("f-busca").value = "";

@@ -47,6 +47,61 @@ def listar(
     )
 
 
+def _processo_no_escopo(id_processo: int, usuario: UsuarioInfo) -> dict:
+    """Busca o processo e aplica RLS por perfil. Levanta 404/403."""
+    p = processo_repo.buscar_detalhe(id_processo)
+    if not p:
+        raise HTTPException(404, "Processo não encontrado")
+    if usuario.perfil == "empresa" and p.get("id_empresa") not in usuario.empresas:
+        raise HTTPException(403, "Processo fora do escopo")
+    if usuario.perfil == "sindicato" and p.get("id_sindicato") not in usuario.sindicatos:
+        raise HTTPException(403, "Processo fora do escopo")
+    return p
+
+
+@router.get("/{id_processo}/detalhe")
+def detalhe_completo(
+    id_processo: int,
+    usuario: Annotated[UsuarioInfo, Depends(usuario_logado)],
+):
+    """Cabeçalho do benefício: dados, beneficiário, endereço e dados bancários."""
+    return _processo_no_escopo(id_processo, usuario)
+
+
+@router.get("/{id_processo}/documentos")
+def documentos(
+    id_processo: int,
+    usuario: Annotated[UsuarioInfo, Depends(usuario_logado)],
+):
+    """Checklist de documentos: o que o tipo exige x o que foi anexado."""
+    p = _processo_no_escopo(id_processo, usuario)
+    return processo_repo.listar_documentos(id_processo, p.get("id_tipo_beneficio"))
+
+
+@router.get("/{id_processo}/pagamentos")
+def pagamentos(
+    id_processo: int,
+    usuario: Annotated[UsuarioInfo, Depends(usuario_logado)],
+):
+    """Parcelas de contas a pagar do processo."""
+    _processo_no_escopo(id_processo, usuario)
+    return processo_repo.listar_pagamentos(id_processo)
+
+
+@router.get("/{id_processo}/mensagens")
+def mensagens(
+    id_processo: int,
+    usuario: Annotated[UsuarioInfo, Depends(usuario_logado)],
+):
+    """
+    Canal de mensagens do processo. Perfil 'empresa' (cliente externo) não vê
+    as mensagens marcadas como internas — só o staff.
+    """
+    _processo_no_escopo(id_processo, usuario)
+    incluir_internas = usuario.perfil != "empresa"
+    return processo_repo.listar_mensagens(id_processo, incluir_internas=incluir_internas)
+
+
 @router.get("/{id_processo}")
 def detalhe(
     id_processo: int,
