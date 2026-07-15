@@ -211,17 +211,42 @@ async function carregarRel(qual) {
  * 'aprovado'   → analista validou
  * 'rejeitado'  → analista recusou (mostra motivo) — libera reupload
  */
-function estadoDoc(d) {
-  if (!d.status) {
-    return d.obrigatorio
-      ? { icone: "○", cls: "text-amber-500", badge: pill("Pendente de envio", "bg-amber-100 text-amber-800") }
-      : { icone: "○", cls: "text-slate-300", badge: pill("Não enviado", "bg-slate-100 text-slate-500") };
-  }
-  if (d.status === "aprovado")
-    return { icone: "✓", cls: "text-emerald-600", badge: pill("Aprovado", "bg-emerald-100 text-emerald-800") };
-  if (d.status === "rejeitado")
-    return { icone: "✕", cls: "text-rose-600", badge: pill("Rejeitado", "bg-rose-100 text-rose-700") };
-  return { icone: "⏳", cls: "text-sky-600", badge: pill("Em análise", "bg-sky-100 text-sky-800") };
+// Estado do TIPO (derivado no backend a partir dos arquivos)
+const ESTADO_TIPO = {
+  aprovado:    { icone: "✓", cls: "text-emerald-600", badge: ["Aprovado", "bg-emerald-100 text-emerald-800"] },
+  rejeitado:   { icone: "✕", cls: "text-rose-600",    badge: ["Reenvio necessário", "bg-rose-100 text-rose-700"] },
+  pendente:    { icone: "⏳", cls: "text-sky-600",     badge: ["Em análise", "bg-sky-100 text-sky-800"] },
+  nao_enviado: { icone: "○", cls: "text-slate-300",   badge: ["Não enviado", "bg-slate-100 text-slate-500"] },
+};
+
+// Estado de cada ARQUIVO dentro do tipo
+const ESTADO_ARQ = {
+  aprovado:  ["Aceito", "bg-emerald-100 text-emerald-800"],
+  rejeitado: ["Rejeitado", "bg-rose-100 text-rose-700"],
+  pendente:  ["Em análise", "bg-sky-100 text-sky-800"],
+};
+
+function renderArquivo(a) {
+  const [txt, cls] = ESTADO_ARQ[a.status] || ["—", "bg-slate-100 text-slate-500"];
+  const nome = a.arquivo_url
+    ? `<a href="${a.arquivo_url}" target="_blank" class="text-indigo-700 hover:underline">${a.nome_original || "arquivo"}</a>`
+    : (a.nome_original || "arquivo");
+  const rejeicao = (a.status === "rejeitado")
+    ? `<div class="text-xs text-rose-700 mt-0.5">
+         <b>Motivo:</b> ${a.motivo_rejeicao || "—"}${a.observacao ? ` — ${a.observacao}` : ""}
+       </div>` : "";
+  return `
+    <div class="flex items-start justify-between gap-3 py-1.5 pl-7 pr-2 border-t border-slate-50">
+      <div class="min-w-0">
+        <div class="text-xs text-slate-600">
+          ${nome}
+          ${a.tamanho_bytes ? `<span class="text-slate-400"> · ${tamanho(a.tamanho_bytes)}</span>` : ""}
+          ${a.enviado_em ? `<span class="text-slate-400"> · ${fmtDataHora(a.enviado_em)}</span>` : ""}
+        </div>
+        ${rejeicao}
+      </div>
+      <div class="shrink-0">${pill(txt, cls)}</div>
+    </div>`;
 }
 
 function renderChecklist(docs) {
@@ -232,18 +257,17 @@ function renderChecklist(docs) {
   }
 
   const obrig = docs.filter(d => d.obrigatorio);
-  const okObrig = obrig.filter(d => d.status === "aprovado").length;
-  const temRejeitado = docs.some(d => d.status === "rejeitado");
-  const faltando = obrig.filter(d => !d.status).length;
+  const okObrig = obrig.filter(d => d.estado === "aprovado").length;
+  const precisaReenvio = docs.filter(d => d.estado === "rejeitado").length;
+  const faltando = obrig.filter(d => d.estado === "nao_enviado").length;
 
-  document.getElementById("rcount-documentos").textContent =
-    `${docs.filter(d => d.status).length}/${docs.length}`;
+  document.getElementById("rcount-documentos").textContent = `${okObrig}/${obrig.length}`;
 
-  // Resumo — espelha a regra derivada do schema:
-  //   1+ rejeitado → documentacao_pendente | todos aprovados → aprovado_analise
+  // Resumo — regra derivada documentada no schema:
+  //   1+ rejeitado → documentacao_pendente | todos obrigatorios aprovados → aprovado_analise
   let resumo, resumoCls;
-  if (temRejeitado) {
-    resumo = "Há documento rejeitado — o processo fica em Documentação Pendente até o reenvio.";
+  if (precisaReenvio) {
+    resumo = `${precisaReenvio} documento(s) aguardando reenvio — o processo fica em Documentação Pendente até resolver.`;
     resumoCls = "bg-rose-50 border-rose-200 text-rose-800";
   } else if (obrig.length && okObrig === obrig.length) {
     resumo = "Todos os documentos obrigatórios aprovados — o processo pode seguir para Aprovado (Análise).";
@@ -255,33 +279,21 @@ function renderChecklist(docs) {
   }
 
   const linhas = docs.map(d => {
-    const e = estadoDoc(d);
-    const arquivo = d.nome_original
-      ? `<div class="text-xs text-slate-500 mt-0.5">
-           ${d.arquivo_url ? `<a href="${d.arquivo_url}" target="_blank" class="text-indigo-700 hover:underline">${d.nome_original}</a>` : d.nome_original}
-           ${d.tamanho_bytes ? `<span class="text-slate-400"> · ${tamanho(d.tamanho_bytes)}</span>` : ""}
-           ${d.enviado_em ? `<span class="text-slate-400"> · enviado ${fmtDataHora(d.enviado_em)}</span>` : ""}
-         </div>`
-      : `<div class="text-xs text-slate-400 mt-0.5">Nenhum arquivo enviado</div>`;
-    const rejeicao = (d.status === "rejeitado")
-      ? `<div class="mt-1 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">
-           <b>Motivo:</b> ${d.motivo_rejeicao || "—"}${d.observacao ? ` — ${d.observacao}` : ""}
-           ${d.avaliado_em ? `<span class="text-rose-400"> · avaliado ${fmtDataHora(d.avaliado_em)}</span>` : ""}
-         </div>`
-      : "";
+    const e = ESTADO_TIPO[d.estado] || ESTADO_TIPO.nao_enviado;
+    const arquivos = d.arquivos && d.arquivos.length
+      ? d.arquivos.map(renderArquivo).join("")
+      : `<div class="pl-7 pr-2 py-1.5 text-xs text-slate-400 border-t border-slate-50">Nenhum arquivo enviado</div>`;
     return `
-      <div class="flex items-start gap-3 px-5 py-3 border-t border-slate-100">
-        <div class="text-lg leading-none mt-0.5 ${e.cls}">${e.icone}</div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 flex-wrap">
-            <span class="font-medium text-slate-800">${d.nome}</span>
-            ${d.obrigatorio ? pill("Obrigatório", "bg-slate-800 text-white") : pill("Opcional", "bg-slate-100 text-slate-500")}
-            ${e.badge}
-            ${d.versao > 1 ? `<span class="text-xs text-slate-400">v${d.versao}</span>` : ""}
-          </div>
-          ${arquivo}
-          ${rejeicao}
+      <div class="px-5 py-3 border-t border-slate-100">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-lg leading-none ${e.cls}">${e.icone}</span>
+          <span class="font-medium text-slate-800">${d.nome}</span>
+          ${d.obrigatorio ? pill("Obrigatório", "bg-slate-800 text-white") : pill("Opcional", "bg-slate-100 text-slate-500")}
+          ${pill(e.badge[0], e.badge[1])}
+          ${d.bloqueado ? `<span class="text-xs text-slate-400" title="Documento aceito — o portal trava o upload">🔒 travado</span>` : ""}
+          ${d.qtd_arquivos > 1 ? `<span class="text-xs text-slate-400">${d.qtd_arquivos} arquivos</span>` : ""}
         </div>
+        <div class="mt-1">${arquivos}</div>
       </div>`;
   }).join("");
 

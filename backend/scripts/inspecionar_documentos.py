@@ -184,21 +184,66 @@ def main() -> None:
                     print(f"    (erro: {e})")
 
             # ---------------------------------------------------------------
-            # 5. Amostra de documents ligados a algo
+            # 5. Amostra de documentos DE PROCESSO, com arquivo e vínculo
             # ---------------------------------------------------------------
-            if existe_tabela(cur, "documents"):
-                print("\n--- documents: amostra de 5 (deleted=0) ---")
-                cur.execute("""
-                    SELECT id, document_name, filename, status_id,
-                           category_id, date_entered
-                      FROM documents
-                     WHERE deleted = 0
-                     ORDER BY date_entered DESC
-                     LIMIT 5
-                """)
-                for r in cur.fetchall():
-                    print(f"    {str(r['document_name'])[:34]:34s} | {str(r['filename'])[:26]:26s} "
-                          f"| status={r['status_id']} cat={r['category_id']}")
+            # OBS: `filename`/`mime` NÃO ficam em `documents` — ficam em
+            # `document_revisions` (documents.document_revision_id → id).
+            # O vínculo com o processo é `documents_cases` (22k linhas).
+            if existe_tabela(cur, "documents_cases"):
+                print("\n--- documents de CASES: amostra de 8 (com arquivo e tipo) ---")
+                try:
+                    cur.execute("""
+                        SELECT d.id, d.document_name, d.category_id, d.status_id,
+                               dc.case_id, c.case_number,
+                               dr.filename, dr.file_mime_type, dr.revision,
+                               dcst.tipo_beneficio_c
+                          FROM documents_cases dc
+                          JOIN documents d  ON d.id = dc.document_id AND d.deleted = 0
+                          LEFT JOIN document_revisions dr ON dr.id = d.document_revision_id
+                          LEFT JOIN documents_cstm dcst   ON dcst.id_c = d.id
+                          LEFT JOIN cases c ON c.id = dc.case_id
+                         WHERE dc.deleted = 0
+                         ORDER BY d.date_entered DESC
+                         LIMIT 8
+                    """)
+                    for r in cur.fetchall():
+                        print(f"    cat={str(r['category_id'])[:26]:26s} status={str(r['status_id'])[:14]:14s} "
+                              f"tipo={str(r['tipo_beneficio_c']):5s} case={r['case_number']} "
+                              f"arq={str(r['filename'])[:28]}")
+                except Exception as e:
+                    print(f"    (erro: {e})")
+
+                print("\n--- documents_cases: quantos vínculos e quantos com categoria ---")
+                try:
+                    cur.execute("""
+                        SELECT COUNT(*) AS vinculos,
+                               SUM(d.category_id IS NOT NULL AND d.category_id <> '') AS com_categoria,
+                               COUNT(DISTINCT dc.case_id) AS cases_distintos
+                          FROM documents_cases dc
+                          JOIN documents d ON d.id = dc.document_id AND d.deleted = 0
+                         WHERE dc.deleted = 0
+                    """)
+                    r = cur.fetchone()
+                    print(f"    vínculos={r['vinculos']:,} · com categoria={r['com_categoria'] or 0:,} "
+                          f"· processos distintos={r['cases_distintos']:,}")
+                except Exception as e:
+                    print(f"    (erro: {e})")
+
+                print("\n--- cruzamento status_id x category_id (top 15) ---")
+                try:
+                    cur.execute("""
+                        SELECT d.category_id, d.status_id, COUNT(*) AS n
+                          FROM documents_cases dc
+                          JOIN documents d ON d.id = dc.document_id AND d.deleted = 0
+                         WHERE dc.deleted = 0
+                         GROUP BY d.category_id, d.status_id
+                         ORDER BY n DESC
+                         LIMIT 15
+                    """)
+                    for r in cur.fetchall():
+                        print(f"    {str(r['category_id'])[:30]:30s} {str(r['status_id'])[:16]:16s} {r['n']:>7,}")
+                except Exception as e:
+                    print(f"    (erro: {e})")
 
     print("\n" + "=" * 84)
     print("Fim. Cole a saída no chat pra modelarmos o sync e as regras.")

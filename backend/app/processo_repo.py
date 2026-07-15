@@ -161,16 +161,48 @@ def buscar_detalhe(id_processo: int) -> dict[str, Any] | None:
     return row
 
 
+def _derivar_estado_tipo(arquivos: list[dict[str, Any]]) -> tuple[str, bool]:
+    """
+    Deriva o estado de um TIPO de documento a partir dos arquivos anexados.
+
+    Regra confirmada com o cliente (01/07/2026), espelhando o legado — que só
+    tem status por ARQUIVO, nunca por tipo:
+
+        aprovado    ≥1 arquivo aceito   → trava o upload no portal (não pode
+                                          substituir documento já aceito)
+        rejeitado   nenhum aceito + ≥1 rejeitado → libera reenvio, mostra motivo
+        pendente    só arquivos em análise
+        nao_enviado nenhum arquivo
+
+    Arquivos rejeitados antigos PERMANECEM como histórico — por isso um tipo
+    com [rejeitado 06/04, aceito 26/06] está aprovado, e frente+verso (dois
+    aceitos no mesmo tipo) também.
+
+    Retorna (estado, bloqueado).
+    """
+    if not arquivos:
+        return ("nao_enviado", False)
+    if any(a.get("status") == "aprovado" for a in arquivos):
+        return ("aprovado", True)
+    if any(a.get("status") == "rejeitado" for a in arquivos):
+        return ("rejeitado", False)
+    return ("pendente", False)
+
+
 def listar_documentos(id_processo: int, id_tipo_beneficio: int | None) -> list[dict[str, Any]]:
     """
     CHECKLIST de documentos do processo.
 
     Cruza a REGRA (bss.tipo_beneficio_documento — o que o tipo de benefício
-    exige) com o ANEXADO (bss.processo_documento — a versão mais recente de
-    cada tipo). Um documento nunca anexado vem com status NULL, o que a UI
-    mostra como pendente de envio.
+    exige) com TODOS os arquivos anexados (bss.processo_documento). Um tipo
+    pode ter N arquivos convivendo: reenvios após rejeição E páginas distintas
+    do mesmo documento (ex.: frente e verso do RG, ambos aceitos).
 
-    Ordem: pela `ordem` da regra (obrigatórios primeiro, 'Outros' por último).
+    Retorna uma linha por TIPO, com os arquivos aninhados em `arquivos` e o
+    estado derivado por _derivar_estado_tipo().
+
+    Ordem: pela `ordem` da regra (obrigatórios primeiro, 'Outros' por último);
+    arquivos dentro do tipo, por versão.
     """
     if not id_tipo_beneficio:
         return []
@@ -193,24 +225,59 @@ def listar_documentos(id_processo: int, id_tipo_beneficio: int | None) -> list[d
                d.tamanho_bytes,
                d.criado_em      AS enviado_em
           FROM bss.tipo_beneficio_documento tbd
-          LEFT JOIN LATERAL (
-              SELECT x.*
-                FROM bss.processo_documento x
-               WHERE x.id_processo = %(id_processo)s
-                 AND x.id_tipo_documento = tbd.id
-               ORDER BY x.versao DESC
-               LIMIT 1
-          ) pd ON TRUE
+          LEFT JOIN bss.processo_documento pd
+                 ON pd.id_processo = %(id_processo)s
+                AND pd.id_tipo_documento = tbd.id
           LEFT JOIN bss.motivo_rejeicao_documento mr ON mr.id = pd.id_motivo_rejeicao
           LEFT JOIN bss.documento d ON d.id = pd.id_documento
          WHERE tbd.id_tipo_beneficio = %(id_tipo)s
            AND tbd.ativo
-         ORDER BY tbd.ordem, tbd.nome
+         ORDER BY tbd.ordem, tbd.nome, pd.versao
     """
     with get_pg_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, {"id_processo": id_processo, "id_tipo": id_tipo_beneficio})
-            return list(cur.fetchall())
+            linhas = cur.fetchall()
+
+    # Agrupa por tipo, aninhando os arquivos
+    tipos: dict[int, dict[str, Any]] = {}
+    for r in linhas:
+        tid = r["id_tipo_documento"]
+        if tid not in tipos:
+            tipos[tid] = {
+                "id_tipo_documento": tid,
+                "codigo": r["codigo"],
+                "nome": r["nome"],
+                "obrigatorio": r["obrigatorio"],
+                "ordem": r["ordem"],
+                "arquivos": [],
+            }
+        # LEFT JOIN sem anexo devolve a linha do tipo com tudo NULL:
+        if r["id_processo_documento"] is not None:
+            tipos[tid]["arquivos"].append({
+                "id": r["id_processo_documento"],
+                "status": r["status"],
+                "versao": r["versao"],
+                "observacao": r["observacao"],
+                "avaliado_em": r["avaliado_em"],
+                "motivo_rejeicao_codigo": r["motivo_rejeicao_codigo"],
+                "motivo_rejeicao": r["motivo_rejeicao"],
+                "nome_original": r["nome_original"],
+                "arquivo_url": r["arquivo_url"],
+                "mime_type": r["mime_type"],
+                "tamanho_bytes": r["tamanho_bytes"],
+                "enviado_em": r["enviado_em"],
+            })
+
+    resultado = []
+    for t in tipos.values():
+        estado, bloqueado = _derivar_estado_tipo(t["arquivos"])
+        t["estado"] = estado
+        t["bloqueado"] = bloqueado
+        t["qtd_arquivos"] = len(t["arquivos"])
+        resultado.append(t)
+    resultado.sort(key=lambda x: (x["ordem"], x["nome"]))
+    return resultado
 
 
 def listar_pagamentos(id_processo: int) -> list[dict[str, Any]]:
