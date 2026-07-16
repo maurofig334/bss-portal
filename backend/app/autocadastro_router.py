@@ -34,7 +34,7 @@ from typing import Any
 
 import bcrypt
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .database import get_pg_connection
 
@@ -174,13 +174,30 @@ def consultar_cnpj(cnpj: str):
 # 2. Gravação
 # ---------------------------------------------------------------------------
 
+# Validação de e-mail própria. NÃO usar pydantic.EmailStr: ele exige o pacote
+# `email-validator`, que não está nas dependências — e o import estoura só na
+# hora de montar o schema, derrubando a aplicação INTEIRA no boot
+# (ImportError: email-validator is not installed). O projeto tem 10
+# dependências, todas com propósito claro; não vale uma nova por causa de uma
+# anotação de tipo.
+RE_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
+
+
 class CadastroIn(BaseModel):
     cnpj: str
-    email: EmailStr
+    email: str
     nome: str | None = Field(None, max_length=120)
     telefone: str | None = Field(None, max_length=20)
     senha: str | None = Field(None, min_length=8)
     aceite: bool
+
+    @field_validator("email")
+    @classmethod
+    def _valida_email(cls, v: str) -> str:
+        v = (v or "").strip().lower()
+        if not RE_EMAIL.match(v):
+            raise ValueError("e-mail inválido")
+        return v
 
 
 @router.post("")
