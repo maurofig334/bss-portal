@@ -16,6 +16,15 @@
 **/schema_suitecrm_resumo.md
 **/schema_suitecrm_dados.json
 
+# Documentos de processo (DADOS PESSOAIS REAIS — nunca versionar)
+# Certidões de óbito, RG, CPF, comprovantes de beneficiários de verdade.
+# Uma vez no histórico do git, ficam pra sempre e em todo clone — problema
+# de LGPD, não de tamanho. A pasta é servida em /app/arquivos pelo main.py;
+# os arquivos entram por download manual (demo) ou, no futuro, pela migração
+# dos binários do SuiteCRM pro storage do BSS.
+backend/frontend/arquivos/*
+!backend/frontend/arquivos/.gitkeep
+
 # IDEs
 .vscode/
 .idea/

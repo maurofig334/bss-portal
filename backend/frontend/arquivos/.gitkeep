@@ -1,0 +1,13 @@
+# Esta pasta é servida em /app/arquivos/ pelo StaticFiles do main.py.
+#
+# O CONTEÚDO NÃO É VERSIONADO (ver .gitignore na raiz): são documentos pessoais
+# reais de beneficiários — certidões de óbito, RG, CPF, comprovantes.
+#
+# Como os arquivos chegam aqui:
+#   - hoje: download manual do portal legado, pra demo. Depois
+#     `python -m scripts.demo_apontar_arquivos --id-processo <id>` aponta o
+#     arquivo_url dos documentos daquele processo pra cá.
+#   - futuro: migração dos binários do SuiteCRM (AWS) pro storage do BSS,
+#     quando houver acesso pleno ao servidor da aplicação legada.
+#
+# Este arquivo existe só pra manter a pasta no repositório.
