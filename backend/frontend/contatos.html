@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Contatos — BSS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50">
+
+  <div class="flex min-h-screen">
+    <aside id="sidebar" class="w-56 flex-shrink-0"></aside>
+
+    <div class="flex-1 flex flex-col">
+      <header class="bg-white border-b border-slate-200">
+        <div class="px-6 py-4 flex items-center justify-end gap-3 text-sm">
+          <!-- Sininho: solicitações de acesso aguardando análise -->
+          <a href="/app/contatos.html?pendentes=1" id="sininho"
+             class="hidden relative text-slate-500 hover:text-slate-800" title="Solicitações pendentes">
+            🔔
+            <span id="sininho-badge"
+                  class="absolute -top-1 -right-2 px-1.5 py-0.5 bg-rose-600 text-white rounded-full text-[10px] font-bold"></span>
+          </a>
+          <span id="usuario-info" class="text-slate-500">—</span>
+          <button onclick="logout()" class="text-slate-500 hover:text-slate-800">Sair</button>
+        </div>
+      </header>
+
+      <main class="flex-1 px-6 py-6 max-w-7xl">
+
+        <div class="flex items-start justify-between gap-4 mb-4 flex-wrap">
+          <div>
+            <h1 class="text-2xl font-bold text-slate-800">Contatos</h1>
+            <p id="subtitulo" class="text-sm text-slate-500 mt-0.5">carregando…</p>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap justify-end">
+            <div class="relative">
+              <input id="f-busca" type="text" placeholder="Nome, e-mail ou CNPJ…"
+                     class="w-56 pl-8 pr-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                     oninput="agendarBusca()">
+              <span class="absolute left-2.5 top-1.5 text-slate-400 text-sm">⌕</span>
+            </div>
+            <button onclick="abrirColunas()" class="px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-100">▦ Colunas</button>
+            <select id="f-tipo" onchange="recarregar()" class="px-2 py-1.5 text-sm border border-slate-300 rounded-lg bg-white">
+              <option value="">Todos os cadastros</option>
+              <option value="auto">Autocadastro</option>
+              <option value="interno">Cadastro interno</option>
+            </select>
+            <select id="f-ativo" onchange="recarregar()" class="px-2 py-1.5 text-sm border border-slate-300 rounded-lg bg-white">
+              <option value="">Ativos e inativos</option>
+              <option value="true">Ativos</option>
+              <option value="false">Inativos</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end mb-2">
+          <div id="tempo" class="font-mono text-xs text-emerald-700"></div>
+        </div>
+
+        <section class="bg-white rounded-lg border border-slate-200 overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-50 text-xs text-slate-500 uppercase tracking-wider">
+                <tr id="thead-row"></tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+          </div>
+          <div id="paginacao" class="flex items-center justify-between p-3 border-t border-slate-200 text-sm"></div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="/app/js/api.js"></script>
+  <script src="/app/js/sidebar.js"></script>
+  <script>renderizarSidebar("contatos");</script>
+  <script src="/app/js/grid-utils.js"></script>
+  <script src="/app/js/contatos.js"></script>
+</body>
+</html>

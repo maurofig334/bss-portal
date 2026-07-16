@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Faça seu cadastro — Benefício Social Sindical</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50">
+
+  <!-- Página PÚBLICA: sem sidebar, sem exigirLogin(). É a porta de entrada de
+       quem ainda não tem conta. -->
+  <header class="bg-white border-b border-slate-200">
+    <div class="max-w-3xl mx-auto px-6 py-5 flex items-center justify-between">
+      <div>
+        <div class="text-xl font-bold text-slate-800">BSS</div>
+        <div class="text-xs text-slate-500">Benefício Social Sindical</div>
+      </div>
+      <a href="/app/login.html" class="text-sm text-indigo-700 hover:underline">Já tenho cadastro</a>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-6 py-10">
+
+    <div class="mb-2 inline-block px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-xs font-medium">
+      ambiente de testes
+    </div>
+    <h1 class="text-2xl font-bold text-slate-800 mb-1">Faça seu cadastro</h1>
+    <p class="text-sm text-slate-500 mb-8">
+      Informe o CNPJ da empresa que você administra. Se ela ainda não for
+      cadastrada, buscamos os dados na Receita Federal.
+    </p>
+
+    <form id="form" onsubmit="return false" class="space-y-6">
+
+      <!-- ETAPA 1: CNPJ ------------------------------------------------- -->
+      <section class="bg-white rounded-lg border border-slate-200 p-5">
+        <h2 class="text-sm font-semibold text-slate-700 mb-3">Dados do Empregador</h2>
+        <label class="block text-xs font-medium text-slate-500 mb-1">CNPJ</label>
+        <div class="flex gap-2">
+          <input id="f-cnpj" type="text" inputmode="numeric" maxlength="18"
+                 placeholder="00.000.000/0000-00"
+                 class="flex-1 px-3 py-2 border border-slate-300 rounded-lg font-mono
+                        focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                 oninput="mascaraCnpj(this)" onblur="verificarCnpj()">
+          <button type="button" onclick="verificarCnpj()" id="btn-verificar"
+                  class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium">
+            Verificar
+          </button>
+        </div>
+        <div id="cnpj-msg" class="mt-2 text-sm"></div>
+      </section>
+
+      <!-- ETAPA 2: dados da empresa (read-only) ------------------------- -->
+      <section id="sec-empresa" class="hidden bg-white rounded-lg border border-slate-200">
+        <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-slate-700">Empresa</h2>
+          <span id="empresa-origem" class="text-xs text-slate-500"></span>
+        </div>
+        <div id="grid-empresa" class="p-5 grid grid-cols-1 md:grid-cols-2 gap-y-3 gap-x-6 text-sm"></div>
+      </section>
+
+      <!-- ETAPA 3: usuário --------------------------------------------- -->
+      <section id="sec-usuario" class="hidden bg-white rounded-lg border border-slate-200 p-5 space-y-4">
+        <h2 class="text-sm font-semibold text-slate-700">Usuário</h2>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-500 mb-1">
+            E-mail (será utilizado para login)</label>
+          <input id="f-email" type="email"
+                 class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                 onblur="verificarEmail()">
+          <div id="email-msg" class="mt-1 text-xs"></div>
+        </div>
+
+        <!-- Só aparece se o e-mail ainda não for um contato conhecido -->
+        <div id="campos-novo" class="hidden space-y-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Nome completo</label>
+            <input id="f-nome" type="text"
+                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-500 mb-1">Telefone</label>
+            <input id="f-telefone" type="text"
+                   class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-medium text-slate-500 mb-1">Senha (mín. 8 caracteres)</label>
+              <input id="f-senha" type="password"
+                     class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-500 mb-1">Repetir senha</label>
+              <input id="f-senha2" type="password"
+                     class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ETAPA 4: termo + envio --------------------------------------- -->
+      <section id="sec-termo" class="hidden space-y-4">
+        <label class="flex gap-3 items-start bg-white border border-slate-300 rounded-lg p-4 cursor-pointer">
+          <input id="f-aceite" type="checkbox" class="mt-1 w-4 h-4 accent-indigo-600">
+          <span id="termo-texto" class="text-xs text-slate-600 leading-relaxed"></span>
+        </label>
+
+        <div id="envio-msg" class="text-sm"></div>
+
+        <button type="button" id="btn-finalizar" onclick="finalizar()"
+                class="px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium
+                       disabled:bg-slate-300 disabled:cursor-not-allowed">
+          Finalizar
+        </button>
+      </section>
+    </form>
+
+    <!-- Sucesso -->
+    <div id="sucesso" class="hidden bg-white rounded-lg border border-emerald-300 p-8 text-center">
+      <div class="text-4xl mb-3">✓</div>
+      <h2 class="text-lg font-semibold text-slate-800 mb-2">Cadastro recebido</h2>
+      <p id="sucesso-msg" class="text-sm text-slate-600 mb-6"></p>
+      <a href="/app/login.html" class="inline-block px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium">
+        Ir para o login
+      </a>
+    </div>
+  </main>
+
+  <script src="/app/js/cadastro.js"></script>
+</body>
+</html>
