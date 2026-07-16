@@ -42,6 +42,11 @@ SQL_LEGADO = """
     SELECT
         c.id                                AS uuid,
         c.case_number                       AS numero_processo,
+        -- protocolo: o número que o CLIENTE conhece. O SuiteCRM reaproveitou o
+        -- campo "Assunto" (cases.name) pra guardá-lo. NÃO derivar — convivem
+        -- dois formatos: 14 dígitos (timestamp, vindos de um sistema PHP
+        -- anterior) e 9 dígitos (AAMM + sequencial, gerados pelo SuiteCRM).
+        c.name                              AS protocolo,
         c.account_id                        AS uuid_empresa,
         c.status                            AS status_legado,
         c.date_entered                      AS criado_em_legado,
@@ -80,7 +85,7 @@ SQL_LEGADO = """
 
 SQL_UPSERT = """
     INSERT INTO bss.processo_beneficio (
-        id_legado_uuid, numero_processo,
+        id_legado_uuid, numero_processo, protocolo,
         id_empresa, id_sindicato, id_trabalhador, id_tipo_beneficio,
         status, situacao_acionamento, causa_mortis, liberalidade,
         beneficiario_nome, beneficiario_cpf, beneficiario_telefone,
@@ -92,12 +97,15 @@ SQL_UPSERT = """
         qtd_bebes, data_obito, data_evento, data_finalizacao,
         forma_pagamento, codigo_rastreio_cartao, vencimento_cartao_em,
         chat_descricao, dados_revisados,
-        ultima_atualizacao_portal_em
+        ultima_atualizacao_portal_em,
+        criado_em, id_base_territorial
     )
     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s)
     ON CONFLICT (id_legado_uuid) DO UPDATE
         SET numero_processo  = EXCLUDED.numero_processo,
+            protocolo        = EXCLUDED.protocolo,
             id_empresa       = EXCLUDED.id_empresa,
             id_sindicato     = EXCLUDED.id_sindicato,
             id_trabalhador   = EXCLUDED.id_trabalhador,
@@ -111,6 +119,39 @@ SQL_UPSERT = """
             data_evento      = EXCLUDED.data_evento,
             data_finalizacao = EXCLUDED.data_finalizacao,
             ultima_atualizacao_portal_em = EXCLUDED.ultima_atualizacao_portal_em,
+            -- ----------------------------------------------------------------
+            -- As colunas abaixo estavam FORA do DO UPDATE: eram gravadas na
+            -- primeira carga e congelavam pra sempre. O sync diário buscava o
+            -- valor novo do MySQL, passava no INSERT, e o Postgres descartava
+            -- em silêncio. Pior que campo vazio (que se nota) — é campo
+            -- DESATUALIZADO, que parece certo.
+            -- Os mais críticos: codigo_rastreio_cartao e vencimento_cartao_em
+            -- mudam DEPOIS da criação do processo (quando o cartão é emitido e
+            -- postado), então nunca eram capturados.
+            -- ----------------------------------------------------------------
+            id_base_territorial          = EXCLUDED.id_base_territorial,
+            beneficiario_telefone        = EXCLUDED.beneficiario_telefone,
+            beneficiario_data_nasc       = EXCLUDED.beneficiario_data_nasc,
+            beneficiario_grau_parentesco = EXCLUDED.beneficiario_grau_parentesco,
+            beneficiario_endereco_logradouro  = EXCLUDED.beneficiario_endereco_logradouro,
+            beneficiario_endereco_numero      = EXCLUDED.beneficiario_endereco_numero,
+            beneficiario_endereco_complemento = EXCLUDED.beneficiario_endereco_complemento,
+            beneficiario_endereco_bairro      = EXCLUDED.beneficiario_endereco_bairro,
+            beneficiario_endereco_cidade      = EXCLUDED.beneficiario_endereco_cidade,
+            beneficiario_endereco_uf          = EXCLUDED.beneficiario_endereco_uf,
+            beneficiario_endereco_cep         = EXCLUDED.beneficiario_endereco_cep,
+            qtd_bebes              = EXCLUDED.qtd_bebes,
+            data_obito             = EXCLUDED.data_obito,
+            forma_pagamento        = EXCLUDED.forma_pagamento,
+            codigo_rastreio_cartao = EXCLUDED.codigo_rastreio_cartao,
+            vencimento_cartao_em   = EXCLUDED.vencimento_cartao_em,
+            chat_descricao         = EXCLUDED.chat_descricao,
+            dados_revisados        = EXCLUDED.dados_revisados,
+            -- criado_em: a data REAL de criação no legado (date_entered).
+            -- Antes o SELECT trazia o campo e ninguém gravava — a coluna caía
+            -- no DEFAULT NOW(), registrando a data do SYNC. Isso envenenava
+            -- relatórios por data e a derivação do protocolo (AAMM da criação).
+            criado_em        = EXCLUDED.criado_em,
             atualizado_em    = NOW()
 """
 
@@ -254,6 +295,9 @@ def _converter(
     return (
         case_uuid,
         int(linha["numero_processo"]) if linha.get("numero_processo") is not None else None,
+        # protocolo = cases.name, copiado como está. Ver nota no SQL_LEGADO:
+        # convivem 14 dígitos (sistema PHP antigo) e 9 dígitos (SuiteCRM).
+        trim_or_none(linha.get("protocolo"), 20),
         emp_map.get(linha.get("uuid_empresa")),
         sind_map.get(uuid_sind),
         trab_map.get(uuid_trab),
@@ -284,6 +328,10 @@ def _converter(
         linha.get("chat_descricao"),
         bool(linha.get("dados_revisados")) if linha.get("dados_revisados") else False,
         linha.get("ultima_atualizacao_portal_em"),
+        linha.get("criado_em_legado"),   # date_entered do legado — ver nota no SQL_UPSERT
+        # id_base_territorial: o bt_map era carregado a cada sync (uma query no
+        # Postgres), passado pra cá e NUNCA usado — mesmo padrão do criado_em.
+        bt_map.get(linha.get("uuid_base_territorial")),
     )
 
 
