@@ -1,0 +1,62 @@
+# ============================================================================
+# bss-api.service — o BSS rodando como serviço na OCI
+#
+# Instalar (na OCI):
+#     sudo cp /home/opc/bss-portal/deploy/bss-api.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now bss-api
+#     sudo systemctl status bss-api
+#
+# Deploy a partir daqui:
+#     cd /home/opc/bss-portal && git pull && sudo systemctl restart bss-api
+#
+# ----------------------------------------------------------------------------
+# POR QUE ISSO EXISTE
+# ----------------------------------------------------------------------------
+# Até 16/07/2026 o uvicorn da OCI rodava como processo solto, iniciado à mão em
+# 09/05 — 68 DIAS no ar servindo o código daquele dia, em memória. Não morria,
+# não atualizava, e não sobreviveria a um reboot. Como a porta 8000 estava
+# fechada no firewall, ninguém acessava e ninguém notou.
+#
+# Com systemd: reinicia sozinho se cair, sobe no boot, e `systemctl restart`
+# passa a ser a segunda metade do deploy (a primeira é o `git pull`).
+# ============================================================================
+
+[Unit]
+Description=BSS — Benefício Social Sindical (FastAPI)
+After=network.target postgresql.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=opc
+Group=opc
+WorkingDirectory=/home/opc/bss-portal/backend
+
+# 127.0.0.1, NÃO 0.0.0.0: quem fala com o mundo é o nginx. O uvicorn só
+# escuta local. Assim a :8000 nunca precisa ser aberta no firewall — e a
+# porta continua fechada mesmo se alguém errar a regra depois.
+ExecStart=/home/opc/bss-portal/backend/venv/bin/uvicorn app.main:app \
+          --host 127.0.0.1 --port 8000 \
+          --proxy-headers --forwarded-allow-ips='127.0.0.1'
+
+# --proxy-headers + forwarded-allow-ips: sem isso, o autocadastro grava o IP
+# do nginx (127.0.0.1) em vez do IP real de quem aceitou o termo — e o aceite
+# perde valor probatório (ver bss.aceite_termo).
+
+Restart=always
+RestartSec=5
+
+# O .env fica em WorkingDirectory e é lido pelo pydantic-settings.
+# NÃO colocar segredo aqui: systemd unit é world-readable.
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bss-api
+
+# Endurecimento básico
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
