@@ -61,6 +61,13 @@ SQL_LEGADO = """
         cc.datavencimentocartao_c           AS vencimento_cartao_em,
         cc.nomebeneficiario_c               AS beneficiario_nome,
         cc.cpfbeneficiario_c                AS beneficiario_cpf,
+        -- CPF do TRABALHADOR: fallback quando a N-N traba_trabalhadores_cases_1_c
+        -- não tem o vínculo (são ~636 cases sem link, de 20.141). Mesma lição
+        -- que já custou caro com o boleto: a relação do SuiteCRM é furada, o
+        -- campo custom é confiável (ver BRIEFING, "match por CNPJ quando
+        -- parent_id/parent_type não funciona").
+        cc.cpf_unformat_c                   AS cpf_trabalhador_unformat,
+        cc.cpf_trabalhador_c                AS cpf_trabalhador_fmt,
         cc.telbeneficiario_c                AS beneficiario_telefone,
         cc.nascimentobeneficiario_c         AS beneficiario_data_nasc,
         cc.grau_de_parentesco_c             AS beneficiario_grau_parentesco,
@@ -213,11 +220,16 @@ def _normalizar_liberalidade(v: str | None) -> str | None:
     return s[:20]
 
 
-def _carregar_mappings(pg_conn) -> tuple[dict, dict, dict, dict, dict]:
-    """Pré-carrega UUID → ID (BSS) pra empresa, sindicato, trabalhador, base_territorial + tipo_beneficio (codigo→id)."""
+def _carregar_mappings(pg_conn) -> tuple[dict, dict, dict, dict, dict, dict]:
+    """
+    Pré-carrega UUID → ID (BSS) pra empresa, sindicato, trabalhador,
+    base_territorial e tipo_beneficio (codigo→id), mais o mapa CPF →
+    trabalhador (fallback quando a N-N do SuiteCRM falha).
+    """
     emp_map: dict[str, int] = {}
     sind_map: dict[str, int] = {}
     trab_map: dict[str, int] = {}
+    trab_cpf_map: dict[str, int] = {}
     bt_map: dict[str, int] = {}
     tipo_map: dict[str, int] = {}
 
@@ -231,6 +243,23 @@ def _carregar_mappings(pg_conn) -> tuple[dict, dict, dict, dict, dict]:
         cur.execute("SELECT id, id_legado_uuid FROM bss.trabalhador WHERE id_legado_uuid IS NOT NULL")
         for r in cur:
             trab_map[r["id_legado_uuid"]] = r["id"]
+        # Fallback por CPF: a N-N traba_trabalhadores_cases_1_c não cobre todos
+        # os cases (~636 de 20.141 sem vínculo), e nesses o processo ficava sem
+        # trabalhador mesmo com o CPF gravado em cases_cstm ao lado.
+        # ATENÇÃO: bss.trabalhador.cpf NÃO é único (o legado tem dupes — está
+        # documentado no 01_schema_inicial.sql). Por isso ficamos com o
+        # trabalhador ATIVO mais recente do CPF: é a aposta menos ruim quando
+        # há mais de um, e a N-N continua tendo prioridade sobre isto.
+        cur.execute(
+            """
+            SELECT DISTINCT ON (cpf) cpf, id
+              FROM bss.trabalhador
+             WHERE cpf IS NOT NULL AND cpf <> ''
+             ORDER BY cpf, (situacao = 'ativo') DESC, mes_ultimo_vinculo DESC NULLS LAST, id DESC
+            """
+        )
+        for r in cur:
+            trab_cpf_map[r["cpf"]] = r["id"]
         cur.execute("SELECT id, id_legado_uuid FROM bss.base_territorial WHERE id_legado_uuid IS NOT NULL")
         for r in cur:
             bt_map[r["id_legado_uuid"]] = r["id"]
@@ -241,7 +270,7 @@ def _carregar_mappings(pg_conn) -> tuple[dict, dict, dict, dict, dict]:
         for r in cur:
             tipo_map[r["codigo_legado"]] = r["id"]
 
-    return emp_map, sind_map, trab_map, bt_map, tipo_map
+    return emp_map, sind_map, trab_map, trab_cpf_map, bt_map, tipo_map
 
 
 def _carregar_case_to_trabalhador(mysql_conn) -> dict[str, str]:
@@ -280,18 +309,35 @@ def _carregar_case_to_sindicato(mysql_conn) -> dict[str, str]:
 
 def _converter(
     linha: dict,
-    emp_map, sind_map, trab_map, bt_map, tipo_map,
+    emp_map, sind_map, trab_map, trab_cpf_map, bt_map, tipo_map,
     case_to_trab, case_to_sind,
+    stats: dict | None = None,
 ) -> tuple:
     cep = so_digitos(linha.get("benef_cep"))
     cpf_benef = so_digitos(linha.get("beneficiario_cpf"))
     # Tipo: legado tem código 2-letras (NA, FA, CM...). tipo_map agora é
     # {codigo_legado → id}, populado de bss.tipo_beneficio.codigo_legado.
     tipo_codigo_legado = (linha.get("tipo_beneficio_codigo") or "").strip().upper()
-    # Trabalhador e sindicato vêm das N-Ns dedicadas
+    # Sindicato vem da N-N dedicada
     case_uuid = linha["uuid"]
-    uuid_trab = case_to_trab.get(case_uuid)
     uuid_sind = case_to_sind.get(case_uuid)
+
+    # ---- Trabalhador: N-N primeiro, CPF como rede de segurança -------------
+    # A N-N traba_trabalhadores_cases_1_c tem 19.505 vínculos pra 20.141 cases:
+    # ~636 processos ficavam SEM trabalhador, mesmo com o CPF gravado em
+    # cases_cstm bem ao lado. Mesma lição do boleto (BRIEFING #4): quando a
+    # relação do SuiteCRM falha, o campo custom salva.
+    uuid_trab = case_to_trab.get(case_uuid)
+    id_trabalhador = trab_map.get(uuid_trab) if uuid_trab else None
+    if id_trabalhador is None:
+        cpf = so_digitos(linha.get("cpf_trabalhador_unformat")) \
+              or so_digitos(linha.get("cpf_trabalhador_fmt"))
+        if cpf and len(cpf) == 11:
+            id_trabalhador = trab_cpf_map.get(cpf)
+            if stats is not None and id_trabalhador is not None:
+                stats["por_cpf"] = stats.get("por_cpf", 0) + 1
+    if stats is not None and id_trabalhador is None:
+        stats["sem_trabalhador"] = stats.get("sem_trabalhador", 0) + 1
     return (
         case_uuid,
         int(linha["numero_processo"]) if linha.get("numero_processo") is not None else None,
@@ -300,7 +346,7 @@ def _converter(
         trim_or_none(linha.get("protocolo"), 20),
         emp_map.get(linha.get("uuid_empresa")),
         sind_map.get(uuid_sind),
-        trab_map.get(uuid_trab),
+        id_trabalhador,   # N-N com fallback por CPF — ver bloco acima
         tipo_map.get(tipo_codigo_legado),
         _normalizar_status(linha.get("status_legado")),
         trim_or_none(linha.get("situacao_acionamento"), 50),
@@ -340,11 +386,13 @@ def sync(dry_run: bool = False, limite: int | None = None) -> int:
 
     print("  carregando mapeamentos UUID→ID do BSS...")
     with get_pg_connection() as pg_conn:
-        emp_map, sind_map, trab_map, bt_map, tipo_map = _carregar_mappings(pg_conn)
+        emp_map, sind_map, trab_map, trab_cpf_map, bt_map, tipo_map = _carregar_mappings(pg_conn)
     print(
         f"  ✓ {len(emp_map)} empresas, {len(sind_map)} sindicatos, "
         f"{len(trab_map)} trabalhadores, {len(tipo_map)} tipos de benefício"
     )
+    print(f"  ✓ {len(trab_cpf_map)} CPFs indexados (fallback quando a N-N falha)")
+    stats: dict[str, int] = {}
 
     print("  carregando N-Ns do legado (case→trabalhador, case→sindicato)...")
     with get_mysql_connection() as mysql_conn:
@@ -363,8 +411,9 @@ def sync(dry_run: bool = False, limite: int | None = None) -> int:
                 prog.tick()
                 yield _converter(
                     linha,
-                    emp_map, sind_map, trab_map, bt_map, tipo_map,
+                    emp_map, sind_map, trab_map, trab_cpf_map, bt_map, tipo_map,
                     case_to_trab, case_to_sind,
+                    stats,
                 )
 
         if dry_run:
@@ -375,4 +424,10 @@ def sync(dry_run: bool = False, limite: int | None = None) -> int:
                 pg_executemany(pg_conn, SQL_UPSERT, converter_iter(), batch_size=500)
 
     prog.fim()
+    if stats.get("por_cpf"):
+        print(f"  ✓ {stats['por_cpf']} processo(s) tiveram o trabalhador resolvido "
+              f"pelo CPF — a N-N do SuiteCRM não os cobria")
+    if stats.get("sem_trabalhador"):
+        print(f"  ⚠ {stats['sem_trabalhador']} processo(s) seguem SEM trabalhador "
+              f"(nem N-N nem CPF resolveram)")
     return prog.contador
