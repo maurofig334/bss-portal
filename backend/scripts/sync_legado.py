@@ -32,6 +32,7 @@ from app.sync import boleto as sync_boleto
 from app.sync import boleto_item as sync_boleto_item
 from app.sync import processo as sync_processo
 from app.sync import processo_mensagem as sync_processo_mensagem
+from app.sync import documento as sync_documento
 
 
 # Mapa: nome CLI → função sync()
@@ -43,9 +44,11 @@ TABELAS = {
     "boleto_item":        sync_boleto_item.sync,
     "processo":           sync_processo.sync,
     "processo_mensagem":  sync_processo_mensagem.sync,
+    "documento":          sync_documento.sync,
 }
 
 # Ordem recomendada quando rodar "todas"
+# documento vem DEPOIS de processo (precisa do processo pra ligar o anexo)
 ORDEM_TODAS = [
     "sindicato",
     "empresa",
@@ -54,6 +57,7 @@ ORDEM_TODAS = [
     "boleto_item",
     "processo",
     "processo_mensagem",
+    "documento",
 ]
 
 
