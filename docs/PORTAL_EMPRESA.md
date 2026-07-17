@@ -120,13 +120,36 @@ Levantado das telas, um tipo por vez:
 | **NATALIDADE** | Quantidade de Bebês | completo | — | Certidão de Nascimento ⭑ · CTPS · Outros |
 | **ACIDENTE** | — | completo | — | CAT (Comunicação de Acidente do Trabalho) ⭑ · Atestado assinado pelo médico ⭑ · CTPS · Outros |
 | **INCAPACITAÇÃO** | — | completo | **sim** | Laudo médico INSS (carta de concessão) informando aposentadoria por invalidez ⭑ · Comprovante de endereço ⭑ · Comprovante bancário ⭑ · CTPS · Outros · Termo de responsabilidade incapacitação · Autorização de crédito incapacitação |
-| **FALECIMENTO** | — | completo | **sim** | Certidão de Óbito ⭑ · *(resto cortado no print)* ❓ |
+| **FALECIMENTO** | — | completo | **sim** | Certidão de Óbito ⭑ · Certidão de casamento ou de união estável ⭑ · Documento que comprove o vínculo do trabalhador falecido com o beneficiário ⭑ · Comprovante de Endereço ⭑ · Comprovante de Sepultamento ⭑ · Comprovante de conta bancária ⭑ · CTPS · Outros · Termo de Responsabilidade Falecimento · Autorização de crédito |
 | **REEMBOLSO RESCISÃO** | — | **NÃO EXISTE** | **sim (conta da EMPRESA)** | TRCT Termo de Rescisão do Contrato de Trabalho Completo ⭑ · Comprovante de Depósito do Valor da Rescisão ⭑ · Outros |
-| **AUXÍLIO CRECHE** | — | reduzido | — | ❓ não visível no print |
+| **AUXÍLIO CRECHE** | — | reduzido | — | **nenhum** ✅ confirmado pela BSS |
 | **CONSULTA MÉDICA** | — | reduzido | — | **nenhum** |
 | **EXAME** | — | reduzido | — | **nenhum** |
 | **BRINDE SINDICATO** | — | reduzido | — | **nenhum** |
 | **ACIONAMENTO FUNERAL** | ❓ | ❓ | ❓ | **sem obrigatórios** — a funerária abre sem documento e sobe depois |
+
+### Conferência contra `bss.tipo_beneficio_documento` (migração 10) ✅
+
+Cada tipo acima foi comparado, documento a documento, com o seed da migração 10:
+
+| Tipo | Seed | Portal | Resultado |
+|---|---|---|---|
+| NATALIDADE | 3 docs, 1 obrigatório | idem | ✅ |
+| FALECIMENTO | 10 docs, 6 obrigatórios | idem | ✅ |
+| ACIDENTE | 4 docs, 2 obrigatórios | idem | ✅ |
+| INCAPACITAÇÃO | 7 docs, 3 obrigatórios | idem | ✅ |
+| REEMBOLSO RESCISÃO | 3 docs, 2 obrigatórios | idem | ✅ |
+| CONSULTA MÉDICA · EXAME · BRINDE SINDICATO · AUXÍLIO CRECHE | sem regra | sem bloco de documentos | ✅ |
+| ACIONAMENTO FUNERAL | 1 doc, **opcional** | ❓ tela não vista | — |
+
+**Nomes, obrigatoriedade e ordem batem em 100% do que foi visto.** A migração
+10 foi extraída deste mesmo formulário e continua fiel — não há nada a corrigir
+no seed. `Outros` aparece com `ordem = 99` no seed e por último na tela: mesmo
+efeito.
+
+Isso também valida o desenho: **o formulário pode ser gerado a partir da
+tabela**, sem `if` por tipo. Os documentos, pelo menos — os *campos* ainda não
+têm tabela (ver §4).
 
 **Três achados estruturais:**
 
