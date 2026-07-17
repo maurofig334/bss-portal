@@ -25,7 +25,17 @@
 
 // Equipe da BSS. 'contabilidade' fica de fora: contadores são gestores das
 // empresas clientes, ou seja, externos. Espelha auth.PERFIS_INTERNOS.
-const PERFIS_INTERNOS = ["admin", "interno", "analista"];
+//
+// PREFIXO SIDEBAR_ NÃO É ENFEITE. Todo <script> desta app compartilha o escopo
+// global, e `boletos.js` e `boleto-detalhe.js` já declaram um PERFIS_INTERNOS
+// cada um. Dois `const` com o mesmo nome = SyntaxError, e o arquivo inteiro
+// não executa — foi assim que a tela de Boletos ficou vazia, sem erro de rede
+// e sem 403, só um SyntaxError no console que ninguém viu.
+//
+// E os três valores DIVERGEM de propósito: boleto-detalhe.js usa
+// ["admin","interno"], sem analista. Ou seja, não dá pra unificar sem decidir
+// regra de negócio — o prefixo é o que mantém as três convivendo em paz.
+const SIDEBAR_PERFIS_INTERNOS = ["admin", "interno", "analista"];
 
 const MENU = [
   {
@@ -50,13 +60,13 @@ const MENU = [
       // cabeçalho do sindicato_router: existe uma tela reduzida no portal
       // legado que ainda precisamos entender antes de liberar.
       { slug: "sindicatos", label: "Sindicatos", href: "/app/sindicatos.html",
-        perfis: [...PERFIS_INTERNOS, "sindicato"],
+        perfis: [...SIDEBAR_PERFIS_INTERNOS, "sindicato"],
         icone: '<path fill-rule="evenodd" d="M3 6a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V6zm5 1a1 1 0 100 2h4a1 1 0 100-2H8zm-1 4a1 1 0 011-1h4a1 1 0 110 2H8a1 1 0 01-1-1zm1 3a1 1 0 100 2h4a1 1 0 100-2H8z" clip-rule="evenodd"/>' },
       // Contatos = usuários externos (bss_users perfil='empresa'). Cada um
       // administra N CNPJs via bss.usuario_empresa. Ver docs/AUTOCADASTRO.md.
       // É a tela de gestão de acesso da BSS: só equipe interna.
       { slug: "contatos", label: "Contatos", href: "/app/contatos.html",
-        perfis: PERFIS_INTERNOS,
+        perfis: SIDEBAR_PERFIS_INTERNOS,
         icone: '<path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>' },
     ],
   },
