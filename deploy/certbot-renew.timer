@@ -1,0 +1,30 @@
+# ============================================================================
+# certbot-renew.timer — agenda o certbot-renew.service
+#
+# Ver o cabeçalho do certbot-renew.service para o porquê deste par existir.
+# ============================================================================
+
+[Unit]
+Description=Renovacao automatica dos certificados Let's Encrypt (2x/dia)
+Documentation=https://eff-certbot.readthedocs.io/en/stable/using.html#renewing-certificates
+
+[Timer]
+# Duas vezes ao dia é a recomendação oficial da EFF, e não é exagero: o
+# certbot só age quando faltam menos de 30 dias para vencer, então quase toda
+# execução é no-op barato. A frequência existe para que, se a renovação falhar
+# (rede fora, Let's Encrypt instável), sobrem ~60 chances antes do vencimento.
+#
+# 03:00 e 15:00 escolhidos para não esbarrar no cron do OCSP (06:00) nem no
+# sync noturno do BSS.
+OnCalendar=*-*-* 03,15:00:00
+
+# A EFF pede que os clientes espalhem os horários: se todo mundo renovasse às
+# 03:00 em ponto, o Let's Encrypt levaria um pico. Até 1h de atraso aleatório.
+RandomizedDelaySec=3600
+
+# Se a máquina estiver desligada/reiniciando na hora marcada, roda assim que
+# voltar em vez de pular a janela silenciosamente.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

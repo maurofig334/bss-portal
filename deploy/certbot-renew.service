@@ -1,0 +1,47 @@
+# ============================================================================
+# certbot-renew.service — renova os certificados Let's Encrypt da máquina
+#
+# POR QUE ISTO EXISTE
+# -------------------
+# O certbot desta OCI foi instalado via pip (/usr/local/bin/certbot), e não
+# pelo pacote da distro. O pacote traz um timer de renovação pronto; o pip
+# NÃO traz nada. Resultado: em 15/07/2026 a máquina tinha o certificado do
+# bi.nexuserp.com.br (Metabase) sem NENHUMA renovação automática — vencendo
+# em 11/09/2026 e dependendo de alguém lembrar. Certificado Let's Encrypt
+# dura 90 dias; a renovação manual falha no primeiro esquecimento.
+#
+# Este unit + o certbot-renew.timer resolvem para TODOS os certificados da
+# máquina de uma vez (bi.nexuserp.com.br, bss.nexussistemas.com.br e o que
+# vier depois). O `certbot renew` percorre /etc/letsencrypt/renewal/ sozinho.
+#
+# Instalar (na OCI):
+#     sudo cp /home/opc/bss-portal/deploy/certbot-renew.* /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now certbot-renew.timer
+#     sudo systemctl list-timers | grep certbot     # confirmar que agendou
+#
+# Testar sem risco (não emite nada, só simula contra o servidor de staging):
+#     sudo /usr/local/bin/certbot renew --dry-run
+# ============================================================================
+
+[Unit]
+Description=Renova certificados Let's Encrypt (certbot pip em /usr/local/bin)
+Documentation=https://eff-certbot.readthedocs.io/en/stable/using.html#renewing-certificates
+# Sem rede o renew falha e ainda queima uma tentativa contra o rate limit
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+
+# NÃO passar --nginx aqui de propósito: cada certificado guarda o próprio
+# authenticator em /etc/letsencrypt/renewal/<dominio>.conf, e o `renew` usa
+# o que foi gravado na emissão. Forçar um authenticator na linha de comando
+# sobrescreveria essa escolha para TODOS os certificados de uma vez.
+#
+# --deploy-hook só dispara quando um certificado foi REALMENTE trocado, então
+# o nginx não leva reload à toa duas vezes por dia. Importante: esta máquina
+# também serve o Metabase, reload desnecessário é risco desnecessário.
+ExecStart=/usr/local/bin/certbot renew --quiet --deploy-hook "systemctl reload nginx"
+
+PrivateTmp=true
