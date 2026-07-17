@@ -64,6 +64,11 @@ def main() -> None:
                    e.razao_social,
                    e.cnpj,
                    e.status,
+                   -- CACHE copiado do legado (comentário do schema: "atualizado
+                   -- por job"). É o número que a tela de Empresas mostra.
+                   -- Se divergir do COUNT real abaixo, a tela está exibindo um
+                   -- total que a própria base não sustenta.
+                   e.qtd_trabalhadores_ativos                              AS cache_ativos,
                    (SELECT count(*) FROM bss.trabalhador t
                      WHERE t.id_empresa_atual = e.id)                    AS trab_total,
                    (SELECT count(*) FROM bss.trabalhador t
@@ -71,6 +76,13 @@ def main() -> None:
                                                                          AS trab_ativos,
                    (SELECT count(*) FROM bss.boleto b
                      WHERE b.id_empresa = e.id)                          AS boletos,
+                   -- O boleto_router força incluir_cancelados=False pro perfil
+                   -- empresa (regra do épico #21). Então "quantos boletos
+                   -- existem" e "quantos o cliente VÊ" são números diferentes,
+                   -- e é o segundo que explica tela vazia.
+                   (SELECT count(*) FROM bss.boleto b
+                     WHERE b.id_empresa = e.id AND b.status <> 'cancelado')
+                                                                         AS bol_visiveis,
                    (SELECT count(*) FROM bss.processo_beneficio p
                      WHERE p.id_empresa = e.id)                          AS processos
               FROM bss.empresa e
@@ -81,21 +93,57 @@ def main() -> None:
         )
         linhas = cur.fetchall()
 
-        cab = f"{'id':>6}  {'trab':>6} {'ativos':>6} {'boletos':>7} {'proc':>5}  razão social"
+        cab = (f"{'id':>6}  {'cache':>6} {'ativos':>6} {'trab':>6} "
+               f"{'boletos':>7} {'visív':>6} {'proc':>5}  razão social")
         print(cab)
         print("-" * len(cab))
-        tot = {"trab_total": 0, "trab_ativos": 0, "boletos": 0, "processos": 0}
+        print("  cache  = e.qtd_trabalhadores_ativos (copiado do legado; é o que a tela mostra)")
+        print("  ativos = COUNT real em bss.trabalhador WHERE id_empresa_atual = e.id")
+        print("-" * len(cab))
+
+        tot = {"cache_ativos": 0, "trab_ativos": 0, "trab_total": 0,
+               "boletos": 0, "bol_visiveis": 0, "processos": 0}
+        divergentes = []
         for r in linhas:
             marca = " ←padrão" if r["id"] == ids[0] else ""
-            print(f"{r['id']:>6}  {r['trab_total']:>6} {r['trab_ativos']:>6} "
-                  f"{r['boletos']:>7} {r['processos']:>5}  "
-                  f"{r['razao_social'][:45]}{marca}")
+            # A divergência é o achado: cache e realidade discordando.
+            if r["cache_ativos"] != r["trab_ativos"]:
+                marca = " ⚠" + marca
+                divergentes.append(r)
+            print(f"{r['id']:>6}  {r['cache_ativos']:>6} {r['trab_ativos']:>6} "
+                  f"{r['trab_total']:>6} {r['boletos']:>7} {r['bol_visiveis']:>6} "
+                  f"{r['processos']:>5}  {r['razao_social'][:34]}{marca}")
             for k in tot:
                 tot[k] += r[k]
 
         print("-" * len(cab))
-        print(f"{'TOTAL':>6}  {tot['trab_total']:>6} {tot['trab_ativos']:>6} "
-              f"{tot['boletos']:>7} {tot['processos']:>5}")
+        print(f"{'TOTAL':>6}  {tot['cache_ativos']:>6} {tot['trab_ativos']:>6} "
+              f"{tot['trab_total']:>6} {tot['boletos']:>7} {tot['bol_visiveis']:>6} "
+              f"{tot['processos']:>5}")
+
+        if divergentes:
+            print(f"\n⚠ {len(divergentes)} empresa(s) com cache ≠ realidade.")
+            print("  A tela de Empresas mostra o CACHE. O filtro de Trabalhadores")
+            print("  usa o id_empresa_atual REAL. Por isso a tela diz '476' e a")
+            print("  listagem vem vazia — os dois números vêm de fontes diferentes.")
+
+        # Status dos boletos da empresa padrão — se 'visív' for 0 com 'boletos'
+        # alto, é aqui que a resposta aparece.
+        cur.execute(
+            """
+            SELECT status, count(*) AS qtd
+              FROM bss.boleto
+             WHERE id_empresa = %s
+             GROUP BY status
+             ORDER BY qtd DESC
+            """,
+            (ids[0],),
+        )
+        st = cur.fetchall()
+        if st:
+            print(f"\nBoletos da empresa padrão (id={ids[0]}) por status:")
+            for r in st:
+                print(f"  {r['status']:<15} {r['qtd']:>5}")
 
         # A tela de Trabalhadores abre com o preset situacao='ativo'. Uma
         # empresa com 500 trabalhadores INATIVOS aparece vazia — e está certa.
