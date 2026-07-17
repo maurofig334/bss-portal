@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard — Portal BSS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<!--
+  dashboard-empresa.html — a primeira tela de quem loga com perfil 'empresa'.
+
+  NÃO é o dashboard.html filtrado. É outra tela, de propósito:
+
+  - O dashboard interno mostra faturamento total, carteira de empresas e
+    inadimplentes da BSS. Não existe versão disso que faça sentido pro cliente.
+  - O portal legado que estamos substituindo também trata os dois como telas
+    distintas: a da empresa não tem KPI nenhum, tem listas de RECENTES e os
+    botões de ação à mão.
+
+  Tela nova com escopo desde o nascimento é mais segura que tela global com
+  WHERE enxertado — o vazamento acontece quando alguém esquece o WHERE.
+
+  As três listas são REAIS: processo_router, boleto_router e trabalhador_router
+  já aplicam RLS por empresa. O único botão falso é o "Adicionar" benefício,
+  que não existe no backend (processo_router só tem GETs).
+-->
+<body class="bg-slate-50">
+
+  <div class="flex h-screen overflow-hidden">
+    <aside id="sidebar" class="w-60 flex-shrink-0"></aside>
+
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <header class="bg-white border-b border-slate-200 flex-shrink-0">
+        <div class="px-6 py-4 flex items-center justify-between gap-4">
+          <div class="flex items-center gap-4 min-w-0">
+            <h1 class="text-xl font-semibold text-slate-800 whitespace-nowrap">Dashboard</h1>
+            <div id="seletor-empresa" class="min-w-0"></div>
+          </div>
+          <div class="flex items-center gap-3 text-sm">
+            <span id="usuario-info" class="text-slate-500">—</span>
+            <button onclick="logout()" class="text-slate-500 hover:text-slate-800">Sair</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="flex-1 overflow-y-auto p-6 space-y-6">
+
+        <!-- ================= RECENTE Benefícios ================= -->
+        <section class="bg-white rounded-xl border border-slate-200 shadow-sm">
+          <div class="px-5 py-4 flex items-center justify-between border-b border-slate-100">
+            <div class="flex items-center gap-2">
+              <h2 class="font-semibold text-slate-700">Benefícios recentes</h2>
+              <a href="/app/processos.html"
+                 class="text-indigo-600 hover:text-indigo-800 text-sm" title="Ver todos">›</a>
+            </div>
+            <!-- Desabilitado: não existe POST /processos. Ver docs/PORTAL_EMPRESA.md -->
+            <button disabled
+                    title="A abertura de benefício ainda não foi implementada no BSS"
+                    class="px-3 py-1.5 text-sm rounded-lg border border-slate-200 text-slate-300 cursor-not-allowed">
+              Adicionar
+            </button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-slate-500">
+                <tr>
+                  <th class="px-5 py-2 text-left font-medium">Protocolo</th>
+                  <th class="px-5 py-2 text-left font-medium">Trabalhador</th>
+                  <th class="px-5 py-2 text-left font-medium">Tipo</th>
+                  <th class="px-5 py-2 text-left font-medium">Status</th>
+                  <th class="px-5 py-2 text-right font-medium">Criação</th>
+                </tr>
+              </thead>
+              <tbody id="tb-beneficios" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ================= RECENTE Boletos ================= -->
+        <section class="bg-white rounded-xl border border-slate-200 shadow-sm">
+          <div class="px-5 py-4 flex items-center justify-between border-b border-slate-100">
+            <div class="flex items-center gap-2">
+              <h2 class="font-semibold text-slate-700">Boletos recentes</h2>
+              <a href="/app/boletos.html"
+                 class="text-indigo-600 hover:text-indigo-800 text-sm" title="Ver todos">›</a>
+            </div>
+            <!-- O modal de emissão vive em boletos.html; não duplicamos aqui. -->
+            <a href="/app/boletos.html"
+               class="px-3 py-1.5 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">
+              Gerar boleto por CNPJ
+            </a>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-slate-500">
+                <tr>
+                  <th class="px-5 py-2 text-left font-medium">Referência</th>
+                  <th class="px-5 py-2 text-left font-medium">Vencimento</th>
+                  <th class="px-5 py-2 text-left font-medium">Empresa</th>
+                  <th class="px-5 py-2 text-right font-medium">Valor</th>
+                  <th class="px-5 py-2 text-left font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody id="tb-boletos" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ============ RECENTE Trabalhadores / Dependentes ============ -->
+        <section class="bg-white rounded-xl border border-slate-200 shadow-sm">
+          <div class="px-5 py-4 flex items-center justify-between gap-3 flex-wrap border-b border-slate-100">
+            <div class="flex items-center gap-2">
+              <h2 class="font-semibold text-slate-700">Trabalhadores / Dependentes</h2>
+              <a href="/app/trabalhadores.html"
+                 class="text-indigo-600 hover:text-indigo-800 text-sm" title="Ver todos">›</a>
+            </div>
+            <!-- Os 3 uploads existem (lista_mensal_router) e os modais estão em
+                 trabalhadores.html. Levar pra lá em vez de duplicar. -->
+            <div class="flex items-center gap-2 flex-wrap">
+              <a href="/app/trabalhadores.html"
+                 class="px-3 py-1.5 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">
+                Carregar trabalhadores
+              </a>
+              <a href="/app/trabalhadores.html"
+                 class="px-3 py-1.5 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">
+                Inativar
+              </a>
+              <a href="/app/trabalhadores.html"
+                 class="px-3 py-1.5 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">
+                Carregar dependentes
+              </a>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-slate-500">
+                <tr>
+                  <th class="px-5 py-2 text-left font-medium">Nome</th>
+                  <th class="px-5 py-2 text-left font-medium">CPF</th>
+                  <th class="px-5 py-2 text-left font-medium">Empresa</th>
+                  <th class="px-5 py-2 text-left font-medium">Situação</th>
+                </tr>
+              </thead>
+              <tbody id="tb-trabalhadores" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- ============ Modal de inadimplência / irregularidade ============ -->
+  <!-- Espelha o alerta bloqueante do portal legado. O texto é o do legado;
+       quando a BSS confirmar a redação e a regra exata, vira parâmetro. -->
+  <div id="modal-alerta"
+       class="hidden fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-xl max-w-xl w-full p-6 text-center">
+      <h3 class="text-lg font-bold text-rose-600 mb-3">ATENÇÃO!</h3>
+      <p id="alerta-texto" class="text-sm text-slate-700 mb-4"></p>
+      <ul id="alerta-empresas" class="text-sm text-slate-600 text-left mb-4 space-y-1"></ul>
+      <p class="text-xs text-slate-500 mb-5">
+        Entre em contato e regularize a situação:
+        <strong>financeiro@bssindical.com.br</strong> · 0800 580 3816 (opção 2, depois 5).
+      </p>
+      <button onclick="document.getElementById('modal-alerta').classList.add('hidden')"
+              class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium">
+        OK
+      </button>
+    </div>
+  </div>
+
+  <script src="/app/js/api.js"></script>
+  <script src="/app/js/empresa-atual.js"></script>
+  <script src="/app/js/sidebar.js"></script>
+  <script>renderizarSidebar("dashboard");</script>
+  <script src="/app/js/dashboard-empresa.js"></script>
+</body>
+</html>

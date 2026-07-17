@@ -4,10 +4,26 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BSS — Início</title>
+  <script src="/app/js/api.js"></script>
   <script>
-    // Redireciona pra dashboard se logado, senão pra login
-    const token = localStorage.getItem("bss_token");
-    window.location.href = token ? "/app/dashboard.html" : "/app/login.html";
+    /*
+     * Porta de entrada: manda cada perfil pro dashboard dele.
+     *
+     * O perfil 'empresa' tem tela própria (dashboard-empresa.html). O
+     * dashboard.html mostra faturamento total e a carteira da BSS, e agora o
+     * backend responde 403 pra quem não é interno — então mandar uma empresa
+     * pra lá renderia uma tela de erros. Ver dashboard_router.py.
+     */
+    (function () {
+      const u = (typeof usuarioAtual === "function") ? usuarioAtual() : null;
+      if (!u) {
+        window.location.replace("/app/login.html");
+        return;
+      }
+      window.location.replace(
+        u.perfil === "empresa" ? "/app/dashboard-empresa.html" : "/app/dashboard.html"
+      );
+    })();
   </script>
 </head>
 <body></body>

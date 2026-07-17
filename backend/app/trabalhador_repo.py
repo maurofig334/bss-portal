@@ -187,11 +187,17 @@ def buscar_detalhe(id: int) -> dict[str, Any] | None:
 
 
 def buscar_titular(cpf: str) -> dict[str, Any] | None:
-    """Acha o titular (id + nome) por CPF — pra link do dependente -> titular."""
+    """
+    Acha o titular por CPF — pra link do dependente -> titular.
+
+    Devolve também id_empresa_atual / id_sindicato_atual porque quem lista os
+    dependentes precisa decidir escopo: os dependentes herdam a empresa do
+    titular, então é o titular que responde "esse CPF é meu?".
+    """
     if not cpf:
         return None
     sql = """
-        SELECT id, nome_completo
+        SELECT id, nome_completo, id_empresa_atual, id_sindicato_atual
           FROM bss.trabalhador
          WHERE cpf = %s AND titularidade = 'titular'
          LIMIT 1

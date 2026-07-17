@@ -97,6 +97,9 @@ function montarQuery() {
   for (const [k, v] of Object.entries(f)) {
     if (v !== "" && v != null) params.append(k, v);
   }
+  // Perfil empresa: sem isto o backend cai em usuario.empresas[0] e mostra os
+  // boletos de UMA das N empresas do usuário. No-op pra perfis internos.
+  comEmpresaAtual(params);
   return params.toString();
 }
 
@@ -551,4 +554,6 @@ function renderResultadoEmissao(r) {
   div.innerHTML = html;
 }
 
+// Seletor de empresa (só pro perfil 'empresa' com +1 CNPJ) — ver empresa-atual.js
+montarSeletorEmpresa("#seletor-empresa", recarregar);
 carregar();

@@ -40,11 +40,20 @@ def listar(
     uf: str | None = None,
     categoria: str | None = None,
     em_atendimento: bool | None = None,
+    ids: list[int] | None = None,
     pagina: int = 1,
     por_pagina: int = 50,
     ordem: str = "razao_social",
     desc: bool = False,
 ) -> dict[str, Any]:
+    """
+    Lista sindicatos paginados.
+
+    `ids` dá escopo ao perfil 'sindicato' e PRECISA ser aplicado no SQL — o
+    router filtrava o resultado depois de paginar, mesmo defeito que o
+    empresa_repo tinha (ver a docstring de lá pro estrago que isso faz na
+    contagem de páginas).
+    """
     pagina = max(1, int(pagina))
     por_pagina = min(200, max(10, int(por_pagina)))
     if ordem not in ORDER_BY_OK:
@@ -76,6 +85,10 @@ def listar(
     if em_atendimento is not None:
         where.append("s.em_atendimento = %(ea)s")
         params["ea"] = bool(em_atendimento)
+
+    if ids is not None:
+        where.append("s.id = ANY(%(ids)s)")
+        params["ids"] = list(ids)
 
     where_sql = " AND ".join(where)
 

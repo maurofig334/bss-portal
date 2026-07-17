@@ -1,17 +1,31 @@
 """
-Dashboard / KPIs do BSS.
+Dashboard / KPIs do BSS — **visão INTERNA, consolidada, da BSS inteira**.
 
 GET /dashboard/kpis            → cards principais (totais)
 GET /dashboard/serie-mensal    → série de boletos pagos x mês (12 meses)
 GET /dashboard/processos-status → distribuição de processos por status
 GET /dashboard/tipos-beneficio → distribuição de processos por tipo
+
+RESTRITO À EQUIPE INTERNA (Depends(exigir_interno)) — não por precaução, mas
+porque todo SQL aqui é global por natureza: faturamento total, carteira de
+empresas, inadimplentes. Não existe versão "filtrada" disto que faça sentido
+pra um cliente.
+
+Até 17/07/2026 estes 4 endpoints exigiam apenas token válido. O `usuario`
+entrava na assinatura e nunca era lido. Como dashboard.html é a primeira tela
+pós-login, qualquer usuário de empresa que entrasse veria, de cara, o
+`SUM(valor_total)` dos boletos pagos — o faturamento da BSS — e quantas
+empresas da carteira estão inadimplentes.
+
+A empresa tem o próprio dashboard (dashboard-empresa.html), com dados dela e
+KPIs que fazem sentido pra ela. Tela separada, não a mesma com WHERE.
 """
 
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from .auth import UsuarioInfo, usuario_logado
+from .auth import UsuarioInfo, exigir_interno
 from .database import get_pg_connection
 
 
@@ -19,7 +33,7 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @router.get("/kpis")
-def kpis(usuario: Annotated[UsuarioInfo, Depends(usuario_logado)]):
+def kpis(usuario: Annotated[UsuarioInfo, Depends(exigir_interno)]):
     """Totais principais — usados nos cards do topo do dashboard."""
     sql = """
         SELECT
@@ -43,7 +57,7 @@ def kpis(usuario: Annotated[UsuarioInfo, Depends(usuario_logado)]):
 
 @router.get("/serie-mensal")
 def serie_mensal(
-    usuario: Annotated[UsuarioInfo, Depends(usuario_logado)],
+    usuario: Annotated[UsuarioInfo, Depends(exigir_interno)],
     meses: int = 12,
 ):
     """Série mensal de boletos pagos (qtd + valor) nos últimos N meses."""
@@ -66,7 +80,7 @@ def serie_mensal(
 
 
 @router.get("/processos-status")
-def processos_status(usuario: Annotated[UsuarioInfo, Depends(usuario_logado)]):
+def processos_status(usuario: Annotated[UsuarioInfo, Depends(exigir_interno)]):
     """Distribuição de processos por status (pra gráfico de pizza/donut)."""
     sql = """
         SELECT
@@ -86,7 +100,7 @@ def processos_status(usuario: Annotated[UsuarioInfo, Depends(usuario_logado)]):
 
 
 @router.get("/tipos-beneficio")
-def tipos_beneficio(usuario: Annotated[UsuarioInfo, Depends(usuario_logado)]):
+def tipos_beneficio(usuario: Annotated[UsuarioInfo, Depends(exigir_interno)]):
     """Distribuição de processos por tipo de benefício."""
     sql = """
         SELECT tb.codigo, tb.nome, COUNT(p.id) AS qtd

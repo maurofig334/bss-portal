@@ -12,8 +12,12 @@
 
     <div class="flex-1 flex flex-col">
       <header class="bg-white border-b border-slate-200">
-        <div class="px-6 py-4 flex items-center justify-between">
-          <h1 class="text-xl font-semibold text-slate-800">Boletos</h1>
+        <div class="px-6 py-4 flex items-center justify-between gap-4">
+          <div class="flex items-center gap-4 min-w-0">
+            <h1 class="text-xl font-semibold text-slate-800 whitespace-nowrap">Boletos</h1>
+            <!-- Só aparece pro perfil 'empresa' com +1 CNPJ. Ver js/empresa-atual.js -->
+            <div id="seletor-empresa" class="min-w-0"></div>
+          </div>
           <div class="flex items-center gap-3 text-sm">
             <button id="btn-gerar"
                     onclick="abrirModalEmissao()"
@@ -115,6 +119,7 @@
   </div>
 
   <script src="/app/js/api.js"></script>
+  <script src="/app/js/empresa-atual.js"></script>
   <script src="/app/js/sidebar.js"></script>
   <script>renderizarSidebar("boletos");</script>
   <script src="/app/js/boletos.js"></script>

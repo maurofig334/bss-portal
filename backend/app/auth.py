@@ -72,21 +72,35 @@ class UsuarioInfo(BaseModel):
 
 def _carregar_vinculos(conn, user_id: int, perfil: str) -> tuple[list[int], list[int]]:
     """Carrega empresas/sindicatos do usuário conforme o perfil.
-    Internos/admin/analista/contabilidade não têm filtro (listas vazias)."""
+    Internos/admin/analista/contabilidade não têm filtro (listas vazias).
+
+    O ORDER BY não é estética. Vários routers usam `usuario.empresas[0]` como
+    escopo padrão quando a requisição não manda id_empresa. Sem ORDER BY, o
+    Postgres devolve a ordem que quiser — e essa ordem pode MUDAR sozinha
+    (VACUUM, reescrita de página). Ou seja, "a primeira empresa do usuário"
+    era, na prática, uma empresa aleatória e instável.
+
+    Isso não é hipotético: um usuário com 11 vínculos abriu Trabalhadores e
+    viu a tela vazia, porque o [0] caiu numa empresa sem trabalhador ativo.
+    Com ORDER BY o padrão passa a ser sempre o mesmo — reproduzível, e o
+    dropdown de troca (js/empresa-atual.js) cobre o resto.
+    """
     empresas: list[int] = []
     sindicatos: list[int] = []
     with conn.cursor() as cur:
         if perfil == "empresa":
             cur.execute(
                 "SELECT id_empresa FROM bss.usuario_empresa "
-                "WHERE id_usuario = %s AND ativo",
+                "WHERE id_usuario = %s AND ativo "
+                "ORDER BY id_empresa",
                 (user_id,),
             )
             empresas = [r["id_empresa"] for r in cur.fetchall()]
         elif perfil == "sindicato":
             cur.execute(
                 "SELECT id_sindicato FROM bss.usuario_sindicato "
-                "WHERE id_usuario = %s AND ativo",
+                "WHERE id_usuario = %s AND ativo "
+                "ORDER BY id_sindicato",
                 (user_id,),
             )
             sindicatos = [r["id_sindicato"] for r in cur.fetchall()]
@@ -151,6 +165,30 @@ def usuario_logado(token: Annotated[str, Depends(oauth2_scheme)]) -> UsuarioInfo
         empresas=p.get("empresas") or [],
         sindicatos=p.get("sindicatos") or [],
     )
+
+
+# Perfis da equipe da BSS. 'contabilidade' NÃO está aqui de propósito: os
+# contadores estão entre os "gestores" das empresas clientes, ou seja, são
+# externos — não podem ver dado consolidado da BSS. Mesmo conjunto usado pelo
+# contato_router.
+PERFIS_INTERNOS = {"admin", "interno", "analista"}
+
+
+def exigir_interno(
+    usuario: Annotated[UsuarioInfo, Depends(usuario_logado)],
+) -> UsuarioInfo:
+    """
+    Dependência pra endpoint que só a equipe da BSS pode ver.
+
+    Use em qualquer endpoint cujo SQL seja global (sem WHERE por empresa ou
+    sindicato). É a diferença entre "esqueci de filtrar" e "não filtra porque
+    não deve filtrar" — e evita repetir o vazamento do dashboard, cujos 4
+    endpoints recebiam o `usuario` e nunca o liam, entregando o faturamento
+    da BSS pra qualquer um que logasse.
+    """
+    if usuario.perfil not in PERFIS_INTERNOS:
+        raise HTTPException(403, "Acesso restrito à equipe interna")
+    return usuario
 
 
 @router.get("/me", response_model=UsuarioInfo)

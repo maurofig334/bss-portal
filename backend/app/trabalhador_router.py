@@ -69,10 +69,34 @@ def listar_dependentes(
     cpf_titular: str,
     usuario: Annotated[UsuarioInfo, Depends(usuario_logado)],
 ):
-    """Retorna dependentes vinculados a um titular pelo CPF."""
+    """
+    Retorna dependentes vinculados a um titular pelo CPF.
+
+    RLS pelo TITULAR: os dependentes herdam a empresa dele, então é o titular
+    que responde "esse CPF está no seu escopo?".
+
+    Este endpoint recebia o `usuario` e nunca o usava: com um CPF qualquer,
+    devolvia nome, CPF e data de nascimento dos dependentes de trabalhador de
+    qualquer empresa. Era o único endpoint de trabalhador sem RLS — e o dado
+    exposto é o mais sensível que temos (menores de idade, LGPD).
+    """
     cpf = "".join(c for c in cpf_titular if c.isdigit())
     if len(cpf) != 11:
         raise HTTPException(400, "CPF inválido")
+
+    if usuario.perfil in ("empresa", "sindicato"):
+        titular = trabalhador_repo.buscar_titular(cpf)
+        # 404 e não 403: quem não pode ver a empresa também não precisa
+        # descobrir que o CPF existe na base.
+        if not titular:
+            raise HTTPException(404, "Titular não encontrado")
+        if usuario.perfil == "empresa" and \
+                titular.get("id_empresa_atual") not in usuario.empresas:
+            raise HTTPException(404, "Titular não encontrado")
+        if usuario.perfil == "sindicato" and \
+                titular.get("id_sindicato_atual") not in usuario.sindicatos:
+            raise HTTPException(404, "Titular não encontrado")
+
     return trabalhador_repo.buscar_dependentes(cpf)
 
 

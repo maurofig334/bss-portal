@@ -152,6 +152,12 @@ function montarQuery() {
   if (ordenacao.desc) params.append("desc", "true");
   params.append("pagina", pagina);
   params.append("por_pagina", 50);
+
+  // Perfil empresa: manda a empresa escolhida no seletor. Sem isso o backend
+  // cai em usuario.empresas[0] e o usuário vê UMA das suas N empresas, sem
+  // saber qual nem como trocar. Não faz nada pra perfis internos.
+  comEmpresaAtual(params);
+
   return params.toString();
 }
 
@@ -544,5 +550,10 @@ function renderSucessoFinal(data) {
   status.innerHTML = html;
 }
 
+
+// Seletor de empresa (só renderiza pra perfil 'empresa' com +1 CNPJ).
+// recarregar() volta pra página 1 — trocar de empresa e cair na página 7 da
+// anterior seria confuso.
+montarSeletorEmpresa("#seletor-empresa", recarregar);
 
 carregar();
