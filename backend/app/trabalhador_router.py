@@ -24,24 +24,31 @@ def _escopo_por_perfil(
     usuario: UsuarioInfo,
     id_empresa: int | None,
     id_sindicato: int | None,
-) -> tuple[int | None, int | None] | None:
+) -> tuple[int | None, list[int] | None, int | None] | None:
     """
-    Aplica o escopo do perfil. Devolve (id_empresa, id_sindicato) ajustados,
-    ou None quando o usuário não tem vínculo nenhum (chamador deve retornar
-    lista vazia).
+    Aplica o escopo do perfil. Devolve (id_empresa, ids_empresa, id_sindicato),
+    ou None quando o usuário não tem vínculo nenhum (o chamador decide se isso
+    é lista vazia ou 403).
 
-    Compartilhado entre listar() e exportar() — se a exportação tivesse a
+    ESCOPO ≠ FILTRO:
+      - `ids_empresa` é o conjunto que o usuário PODE ver (vem do JWT);
+      - `id_empresa` é o que ele ESCOLHEU ver (vem da tela, opcional).
+
+    Antes, sem filtro, o router usava `usuario.empresas[0]` como escopo — e um
+    gestor de 11 CNPJs via os trabalhadores de um só, escolhido pelo banco.
+
+    Compartilhado entre listar() e exportar(): se a exportação tivesse a
     própria cópia dessa regra, uma hora as duas divergiriam e o .xlsx viraria
-    o furo de RLS mais silencioso possível: o cliente baixa, abre no Excel, e
+    o furo de RLS mais silencioso possível — o cliente baixa, abre no Excel, e
     ninguém nunca vê a tela que mostrou demais.
     """
+    ids_empresa: list[int] | None = None
     if usuario.perfil == "empresa":
         if not usuario.empresas:
             return None
-        if id_empresa is None:
-            id_empresa = usuario.empresas[0]
-        elif id_empresa not in usuario.empresas:
+        if id_empresa is not None and id_empresa not in usuario.empresas:
             raise HTTPException(403, "Empresa fora do escopo do usuário")
+        ids_empresa = usuario.empresas
     elif usuario.perfil == "sindicato":
         if not usuario.sindicatos:
             return None
@@ -49,7 +56,7 @@ def _escopo_por_perfil(
             id_sindicato = usuario.sindicatos[0]
         elif id_sindicato not in usuario.sindicatos:
             raise HTTPException(403, "Sindicato fora do escopo do usuário")
-    return id_empresa, id_sindicato
+    return id_empresa, ids_empresa, id_sindicato
 
 
 @router.get("")
@@ -75,12 +82,13 @@ def listar(
     if escopo is None:
         return {"linhas": [], "total": 0, "pagina": 1,
                 "por_pagina": por_pagina, "paginas": 0}
-    id_empresa, id_sindicato = escopo
+    id_empresa, ids_empresa, id_sindicato = escopo
 
     return trabalhador_repo.listar(
         busca=busca,
         situacao=situacao,
         id_empresa=id_empresa,
+        ids_empresa=ids_empresa,
         id_sindicato=id_sindicato,
         uf=uf,
         pagina=pagina,
@@ -114,11 +122,12 @@ def exportar(
     escopo = _escopo_por_perfil(usuario, id_empresa, id_sindicato)
     if escopo is None:
         raise HTTPException(403, "Usuário sem vínculo — nada a exportar")
-    id_empresa, id_sindicato = escopo
+    id_empresa, ids_empresa, id_sindicato = escopo
 
     linhas = trabalhador_repo.listar_tudo(
         busca=busca, situacao=situacao, id_empresa=id_empresa,
-        id_sindicato=id_sindicato, uf=uf, ordem=ordem, desc=desc,
+        ids_empresa=ids_empresa, id_sindicato=id_sindicato,
+        uf=uf, ordem=ordem, desc=desc,
     )
 
     from openpyxl import Workbook

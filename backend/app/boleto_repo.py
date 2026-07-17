@@ -20,6 +20,7 @@ def listar(
     status: str | None = None,
     mes_referencia: str | None = None,   # YYYY-MM
     id_empresa: int | None = None,
+    ids_empresa: list[int] | None = None,
     id_sindicato: int | None = None,
     incluir_cancelados: bool = False,
     pagina: int = 1,
@@ -27,6 +28,14 @@ def listar(
     ordem: str = "mes_referencia",
     desc: bool = True,
 ) -> dict[str, Any]:
+    """
+    `id_empresa`  → filtro de UMA empresa (escolha na tela).
+    `ids_empresa` → ESCOPO: o conjunto que o usuário pode ver (vem do JWT).
+
+    Os dois convivem: o filtro estreita dentro do escopo, nunca o alarga.
+    Antes o router preenchia id_empresa com `usuario.empresas[0]` quando a tela
+    não mandava nada — e um gestor de 11 CNPJs via os boletos de um só.
+    """
     pagina = max(1, int(pagina))
     por_pagina = min(200, max(10, int(por_pagina)))
     if ordem not in ORDER_BY_OK:
@@ -61,6 +70,9 @@ def listar(
     if id_empresa:
         where.append("v.id_empresa = %(id_empresa)s")
         params["id_empresa"] = id_empresa
+    if ids_empresa is not None:
+        where.append("v.id_empresa = ANY(%(ids_empresa)s)")
+        params["ids_empresa"] = list(ids_empresa)
     if id_sindicato:
         where.append("v.id_sindicato = %(id_sindicato)s")
         params["id_sindicato"] = id_sindicato

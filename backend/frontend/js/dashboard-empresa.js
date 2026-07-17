@@ -77,23 +77,24 @@ function linhaErro(cols, msg) {
 
 async function carregarBeneficios() {
   const tb = document.getElementById("tb-beneficios");
-  tb.innerHTML = linhaVazia(5, "Carregando…");
+  tb.innerHTML = linhaVazia(6, "Carregando…");
   const p = new URLSearchParams({ pagina: 1, por_pagina: LIMITE, ordem: "criado_em", desc: "true" });
   comEmpresaAtual(p);
   try {
     const d = await apiFetch(`/processos?${p}`);
-    if (!d.linhas.length) return void (tb.innerHTML = linhaVazia(5, "Nenhum benefício"));
+    if (!d.linhas.length) return void (tb.innerHTML = linhaVazia(6, "Nenhum benefício"));
     tb.innerHTML = d.linhas.map((r) => `
       <tr class="hover:bg-slate-50 cursor-pointer"
           onclick="location.href='/app/processo-detalhe.html?id=${r.id}'">
         <td class="px-5 py-3 font-mono text-xs">${esc(r.protocolo || "—")}</td>
         <td class="px-5 py-3">${esc(r.trabalhador_nome || "—")}</td>
+        <td class="px-5 py-3 truncate max-w-xs" title="${esc(r.empresa)}">${esc(r.empresa || "—")}</td>
         <td class="px-5 py-3">${esc(r.tipo_beneficio || "—")}</td>
         <td class="px-5 py-3">${badge(r.status_nome || r.status, "bg-slate-100 text-slate-700")}</td>
         <td class="px-5 py-3 text-right text-slate-500">${fmtDataHora(r.criado_em)}</td>
       </tr>`).join("");
   } catch (e) {
-    tb.innerHTML = linhaErro(5, e.message);
+    tb.innerHTML = linhaErro(6, e.message);
   }
 }
 
@@ -160,7 +161,11 @@ async function carregarTrabalhadores() {
  * banco diz, sem inventar regra própria.
  */
 async function verificarAlerta() {
-  if (!empresaAtualId()) return;   // perfil sem escopo por empresa
+  // Checa o PERFIL, não empresaAtualId() — este agora devolve null no caso
+  // normal ("todas as empresas"), e o alerta some justamente pra quem
+  // administra várias, que é quem mais precisa dele.
+  const usr = usuarioAtual();
+  if (!usr || usr.perfil !== "empresa") return;
   let empresas;
   try {
     empresas = await apiFetch("/empresas?por_pagina=200&ordem=razao_social");

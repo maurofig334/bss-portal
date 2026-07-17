@@ -45,6 +45,7 @@ def _montar_where(
     id_empresa: int | None,
     id_sindicato: int | None,
     uf: str | None,
+    ids_empresa: list[int] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """
     Monta o WHERE compartilhado entre listar() e listar_tudo().
@@ -52,6 +53,9 @@ def _montar_where(
     Existe pra que a exportação filtre EXATAMENTE como a tela. Filtro
     duplicado é filtro que diverge — e aí o Excel do cliente não bate com o
     que ele está vendo, o que é pior do que não ter exportação.
+
+    `id_empresa` (uma) é FILTRO da tela; `ids_empresa` (conjunto) é ESCOPO do
+    perfil. Convivem: o filtro estreita dentro do escopo, nunca o alarga.
     """
     where = ["1=1"]
     params: dict[str, Any] = {}
@@ -82,6 +86,9 @@ def _montar_where(
     if id_empresa:
         where.append("v.id_empresa_atual = %(id_empresa)s")
         params["id_empresa"] = id_empresa
+    if ids_empresa is not None:
+        where.append("v.id_empresa_atual = ANY(%(ids_empresa)s)")
+        params["ids_empresa"] = list(ids_empresa)
     if id_sindicato:
         where.append("v.id_sindicato_atual = %(id_sindicato)s")
         params["id_sindicato"] = id_sindicato
@@ -98,6 +105,7 @@ def listar(
     id_empresa: int | None = None,
     id_sindicato: int | None = None,
     uf: str | None = None,
+    ids_empresa: list[int] | None = None,
     pagina: int = 1,
     por_pagina: int = 50,
     ordem: str = "nome_completo",
@@ -113,7 +121,8 @@ def listar(
         ordem = "nome_completo"
     direcao = "DESC" if desc else "ASC"
 
-    where_sql, params = _montar_where(busca, situacao, id_empresa, id_sindicato, uf)
+    where_sql, params = _montar_where(busca, situacao, id_empresa,
+                                      id_sindicato, uf, ids_empresa)
 
     sql_total = f"SELECT COUNT(*) AS total FROM bss.v_trabalhador v WHERE {where_sql}"
     sql_lista = f"""
@@ -156,6 +165,7 @@ def listar_tudo(
     id_empresa: int | None = None,
     id_sindicato: int | None = None,
     uf: str | None = None,
+    ids_empresa: list[int] | None = None,
     ordem: str = "nome_completo",
     desc: bool = False,
 ) -> list[dict[str, Any]]:
@@ -170,7 +180,8 @@ def listar_tudo(
         ordem = "nome_completo"
     direcao = "DESC" if desc else "ASC"
 
-    where_sql, params = _montar_where(busca, situacao, id_empresa, id_sindicato, uf)
+    where_sql, params = _montar_where(busca, situacao, id_empresa,
+                                      id_sindicato, uf, ids_empresa)
     sql = f"""
         SELECT {COLUNAS_LISTA}
         FROM bss.v_trabalhador v

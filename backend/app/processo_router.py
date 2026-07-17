@@ -25,16 +25,28 @@ def listar(
     ordem: str = "criado_em",
     desc: bool = True,
 ):
+    # ESCOPO ≠ FILTRO.
+    #
+    # O escopo é o conjunto que o usuário PODE ver (vem do JWT). O filtro é o
+    # que ele ESCOLHEU ver (vem da tela). Antes o router confundia os dois:
+    # sem filtro, usava `usuario.empresas[0]` como se fosse escopo — e um
+    # gestor de 11 CNPJs via os benefícios de um só, escolhido pelo banco.
+    #
+    # O portal legado não tem "empresa atual": lista tudo que o usuário
+    # administra, com a empresa como coluna. É o comportamento correto.
+    ids_empresa: list[int] | None = None
     if usuario.perfil == "empresa":
         if not usuario.empresas:
-            return {"linhas": [], "total": 0, "pagina": 1, "por_pagina": por_pagina, "paginas": 0}
-        if id_empresa is None:
-            id_empresa = usuario.empresas[0]
-        elif id_empresa not in usuario.empresas:
+            return {"linhas": [], "total": 0, "pagina": 1,
+                    "por_pagina": por_pagina, "paginas": 0}
+        if id_empresa is not None and id_empresa not in usuario.empresas:
             raise HTTPException(403, "Empresa fora do escopo")
+        # Escopo sempre aplicado, mesmo com filtro: o filtro estreita, nunca alarga.
+        ids_empresa = usuario.empresas
     elif usuario.perfil == "sindicato":
         if not usuario.sindicatos:
-            return {"linhas": [], "total": 0, "pagina": 1, "por_pagina": por_pagina, "paginas": 0}
+            return {"linhas": [], "total": 0, "pagina": 1,
+                    "por_pagina": por_pagina, "paginas": 0}
         if id_sindicato is None:
             id_sindicato = usuario.sindicatos[0]
         elif id_sindicato not in usuario.sindicatos:
@@ -42,7 +54,7 @@ def listar(
 
     return processo_repo.listar(
         busca=busca, status=status, status_categoria=status_categoria, tipo=tipo,
-        id_empresa=id_empresa, id_sindicato=id_sindicato,
+        id_empresa=id_empresa, ids_empresa=ids_empresa, id_sindicato=id_sindicato,
         pagina=pagina, por_pagina=por_pagina, ordem=ordem, desc=desc,
     )
 

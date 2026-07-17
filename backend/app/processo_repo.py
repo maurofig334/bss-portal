@@ -27,12 +27,27 @@ def listar(
     status_categoria: str | None = None,
     tipo: str | None = None,
     id_empresa: int | None = None,
+    ids_empresa: list[int] | None = None,
     id_sindicato: int | None = None,
     pagina: int = 1,
     por_pagina: int = 50,
     ordem: str = "criado_em",
     desc: bool = True,
 ) -> dict[str, Any]:
+    """
+    `id_empresa`  → filtro de UMA empresa (escolha do usuário na tela).
+    `ids_empresa` → ESCOPO: o conjunto que o usuário pode ver.
+
+    Os dois convivem e são coisas diferentes. O escopo é segurança e vem do
+    JWT; o filtro é conveniência e vem da tela. Quando os dois estão presentes,
+    ambos se aplicam (o filtro tem que estar dentro do escopo — o router
+    valida antes de chegar aqui).
+
+    Antes existia só `id_empresa`, e o router preenchia com `usuario.empresas[0]`
+    quando a tela não mandava nada. Resultado: um gestor de 11 CNPJs via os
+    benefícios de UM deles — e se aquele não tivesse nenhum, via a tela vazia
+    achando que o sistema estava quebrado. Estava: o desenho é que estava.
+    """
     pagina = max(1, int(pagina))
     por_pagina = min(200, max(10, int(por_pagina)))
     if ordem not in ORDER_BY_OK:
@@ -64,6 +79,9 @@ def listar(
     if id_empresa:
         where.append("v.id_empresa = %(id_empresa)s")
         params["id_empresa"] = id_empresa
+    if ids_empresa is not None:
+        where.append("v.id_empresa = ANY(%(ids_empresa)s)")
+        params["ids_empresa"] = list(ids_empresa)
     if id_sindicato:
         where.append("v.id_sindicato = %(id_sindicato)s")
         params["id_sindicato"] = id_sindicato
