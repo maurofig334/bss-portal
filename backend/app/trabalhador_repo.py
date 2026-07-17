@@ -27,28 +27,32 @@ def _so_digitos(s: str | None) -> str:
     return re.sub(r"\D+", "", s)
 
 
-def listar(
-    busca: str | None = None,
-    situacao: str | None = None,
-    id_empresa: int | None = None,
-    id_sindicato: int | None = None,
-    uf: str | None = None,
-    pagina: int = 1,
-    por_pagina: int = 50,
-    ordem: str = "nome_completo",
-    desc: bool = False,
-) -> dict[str, Any]:
-    """
-    Lista trabalhadores com paginação.
-    Retorna {linhas: [...], total: N, pagina, por_pagina, paginas}.
-    """
-    pagina = max(1, int(pagina))
-    por_pagina = min(200, max(10, int(por_pagina)))
-    if ordem not in ORDER_BY_OK:
-        ordem = "nome_completo"
-    direcao = "DESC" if desc else "ASC"
+# Colunas que a listagem e a exportação compartilham. Uma fonte só: se a
+# listagem ganhar coluna, o Excel ganha junto e ninguém precisa lembrar.
+COLUNAS_LISTA = """
+    v.id, v.cpf, v.nome_completo, v.titularidade, v.cpf_titular,
+    v.qtd_dependentes_ativos,
+    v.situacao,
+    v.empresa, v.empresa_cnpj, v.sindicato, v.sindicato_categoria,
+    v.trab_cidade, v.trab_uf,
+    v.mes_ultimo_vinculo, v.ultimo_pagamento_em
+"""
 
-    # Monta WHERE dinâmico
+
+def _montar_where(
+    busca: str | None,
+    situacao: str | None,
+    id_empresa: int | None,
+    id_sindicato: int | None,
+    uf: str | None,
+) -> tuple[str, dict[str, Any]]:
+    """
+    Monta o WHERE compartilhado entre listar() e listar_tudo().
+
+    Existe pra que a exportação filtre EXATAMENTE como a tela. Filtro
+    duplicado é filtro que diverge — e aí o Excel do cliente não bate com o
+    que ele está vendo, o que é pior do que não ter exportação.
+    """
     where = ["1=1"]
     params: dict[str, Any] = {}
 
@@ -85,17 +89,35 @@ def listar(
         where.append("v.trab_uf = %(uf)s")
         params["uf"] = uf
 
-    where_sql = " AND ".join(where)
+    return " AND ".join(where), params
+
+
+def listar(
+    busca: str | None = None,
+    situacao: str | None = None,
+    id_empresa: int | None = None,
+    id_sindicato: int | None = None,
+    uf: str | None = None,
+    pagina: int = 1,
+    por_pagina: int = 50,
+    ordem: str = "nome_completo",
+    desc: bool = False,
+) -> dict[str, Any]:
+    """
+    Lista trabalhadores com paginação.
+    Retorna {linhas: [...], total: N, pagina, por_pagina, paginas}.
+    """
+    pagina = max(1, int(pagina))
+    por_pagina = min(200, max(10, int(por_pagina)))
+    if ordem not in ORDER_BY_OK:
+        ordem = "nome_completo"
+    direcao = "DESC" if desc else "ASC"
+
+    where_sql, params = _montar_where(busca, situacao, id_empresa, id_sindicato, uf)
 
     sql_total = f"SELECT COUNT(*) AS total FROM bss.v_trabalhador v WHERE {where_sql}"
     sql_lista = f"""
-        SELECT
-            v.id, v.cpf, v.nome_completo, v.titularidade, v.cpf_titular,
-            v.qtd_dependentes_ativos,
-            v.situacao,
-            v.empresa, v.empresa_cnpj, v.sindicato, v.sindicato_categoria,
-            v.trab_cidade, v.trab_uf,
-            v.mes_ultimo_vinculo, v.ultimo_pagamento_em
+        SELECT {COLUNAS_LISTA}
         FROM bss.v_trabalhador v
         WHERE {where_sql}
         ORDER BY v.{ordem} {direcao} NULLS LAST
@@ -119,6 +141,47 @@ def listar(
         "por_pagina": por_pagina,
         "paginas": paginas,
     }
+
+
+# Teto de segurança da exportação. A MANSERV tem 1.484 trabalhadores; a maior
+# empresa da base não chega perto disto. O limite existe pra que um filtro
+# esquecido não vire um .xlsx de 700 mil linhas e derrube o processo — o
+# uvicorn monta a planilha inteira em memória.
+LIMITE_EXPORT = 50_000
+
+
+def listar_tudo(
+    busca: str | None = None,
+    situacao: str | None = None,
+    id_empresa: int | None = None,
+    id_sindicato: int | None = None,
+    uf: str | None = None,
+    ordem: str = "nome_completo",
+    desc: bool = False,
+) -> list[dict[str, Any]]:
+    """
+    Mesma consulta de listar(), SEM paginação — pra exportação.
+
+    Usa o mesmo _montar_where(), então o Excel sai exatamente com o que a tela
+    está mostrando. Se divergir, o cliente confia no arquivo e desconfia do
+    sistema.
+    """
+    if ordem not in ORDER_BY_OK:
+        ordem = "nome_completo"
+    direcao = "DESC" if desc else "ASC"
+
+    where_sql, params = _montar_where(busca, situacao, id_empresa, id_sindicato, uf)
+    sql = f"""
+        SELECT {COLUNAS_LISTA}
+        FROM bss.v_trabalhador v
+        WHERE {where_sql}
+        ORDER BY v.{ordem} {direcao} NULLS LAST
+        LIMIT {LIMITE_EXPORT}
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return list(cur.fetchall())
 
 
 def buscar_por_id(id: int) -> dict[str, Any] | None:

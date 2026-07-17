@@ -76,6 +76,48 @@ async function apiAbrirPdf(path) {
 }
 
 
+/**
+ * Baixa um arquivo autenticado e dispara o "salvar como" do navegador.
+ *
+ * Mesmo motivo do apiAbrirPdf: <a href> e window.open não mandam o header
+ * Authorization. A diferença é que aqui queremos DOWNLOAD com nome de arquivo,
+ * não abrir numa aba — .xlsx aberto como blob vira um nome tipo
+ * "a3f9-8c2e-..." e o usuário não sabe o que baixou.
+ *
+ * O nome vem do Content-Disposition que o backend manda; `nomePadrao` é só o
+ * fallback.
+ */
+async function apiBaixarArquivo(path, nomePadrao = "download") {
+  const token = localStorage.getItem(TOKEN_KEY);
+  const resp = await fetch(`${API_BASE}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (resp.status === 401) {
+    logout();
+    throw new Error("Sessão expirada");
+  }
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => "");
+    throw new Error(`Erro ${resp.status}: ${txt || resp.statusText}`);
+  }
+
+  let nome = nomePadrao;
+  const cd = resp.headers.get("Content-Disposition") || "";
+  const m = cd.match(/filename="?([^"]+)"?/);
+  if (m) nome = m[1];
+
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nome;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+
 function logout() {
   localStorage.removeItem(TOKEN_KEY);
   window.location.href = "/app/login.html";
