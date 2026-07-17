@@ -194,6 +194,51 @@ têm tabela (ver §4).
    não há beneficiário. Não é sobre quem o benefício ajuda — é sobre quem
    assina o recibo.
 
+   **Três destinatários possíveis**, e o schema já previu dois deles em
+   `bss.dados_bancarios.titular_tipo` ('empresa' | 'beneficiario'):
+
+   | Recebe | Tipos |
+   |---|---|
+   | o trabalhador | consulta médica, exame, brinde |
+   | um beneficiário | falecimento, acidente, incapacitação |
+   | a **empresa** | reembolso rescisão — ✅ confirmado: "o reembolso é para a empresa" |
+
+   ⚠️ **TEORIA DESCARTADA — não remontar.** Reparei que NATALIDADE e ACIDENTE
+   têm bloco Beneficiário com endereço completo mas NENHUM dado bancário, e
+   deduzi que o endereço servia pra enviar o cartão (`codigo_rastreio_cartao`
+   está comentado como "código dos correios pra entrega"). **Está errado.**
+   Correção da BSS: em quase todos os sindicatos o pagamento é por cartão de
+   benefícios, e **o plástico é emitido e enviado para a SEDE DO SINDICATO** —
+   é o sindicato que entrega o cartão físico ao trabalhador. O endereço do
+   beneficiário não é logística.
+
+   ❓ Fica em aberto pra que serve o endereço no bloco Beneficiário.
+
+   **Pagamentos são capítulo futuro** — ainda não encostamos. Não desenhar o
+   formulário assumindo forma de pagamento. O pouco que já foi dito pela BSS,
+   pra não se perder:
+
+   - **Regra geral:** em quase todos os sindicatos o pagamento é por **cartão
+     de benefícios**. O plástico é emitido e enviado à **sede do sindicato**,
+     que entrega em mãos ao trabalhador.
+   - **FALECIMENTO é a exceção:** pago **em parcelas**, **depositadas na conta
+     do beneficiário**. Explica por que é o único tipo com beneficiário
+     obrigatório *e* dados bancários — e por que o rótulo do PIX diz
+     "obrigatório ser CPF do beneficiário".
+   - **As parcelas viram contas a pagar, que depois são liquidadas.** Ou seja,
+     `bss.pagamento` **é** o contas a pagar — o próprio schema entrega a
+     ligação: `numero_pagamento BIGINT, -- = id_cpagar_c (sequencial)`.
+     *cpagar* = contas a pagar do legado. Liquidar = `status` virar `'pago'`
+     com `data_pagamento` preenchida.
+   - O schema já suporta: `processo_beneficio.qtd_parcelas`, `bss.pagamento`
+     com `parcela`/`data_prevista`/`data_vencimento`/`data_pagamento`/`status`,
+     e `bss.dados_bancarios.titular_tipo`. O comentário de
+     `pagamento.beneficiario_nome` inclusive avisa que "beneficiário pode mudar
+     entre parcelas (ex: pensão alimentícia)".
+   - Consequência pro backlog: o **"módulo de contas a pagar"** do épico #22
+     não é módulo novo. É a tela que falta pra uma tabela que já existe, já
+     está sincronizada, e já tem endpoint (`processo_repo.listar_pagamentos`).
+
    ❓ **Mas a regra pode não ser por tipo.** Na tela do analista, dois processos
    de NATALIDADE aparecem lado a lado: num, "Nome do Trab." e "Nome
    Beneficiário" são a MESMA pessoa (ELIS AGUIAR DO NASCIMENTO); no outro, são
