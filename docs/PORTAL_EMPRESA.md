@@ -165,7 +165,49 @@ têm tabela (ver §4).
    de conta (CORRENTE/…), Detalhe da conta (INDIVIDUAL/…), Chave PIX.
    Encaixa em `bss.processo_dados_bancarios` (seção 13 do schema).
 
-3. **"Beneficiário reduzido" — É BUG DO LEGADO. NÃO REPLICAR.** ✅ Confirmado
+3. **O QUE É UM BENEFICIÁRIO** ✅ Definição da BSS (17/07/2026):
+
+   > "Beneficiário é quem recebe uma indenização e que **não seja o próprio
+   > trabalhador**. Por exemplo, quando o evento é um acidente grave, o
+   > trabalhador pode estar incapacitado para receber o dinheiro. No caso de
+   > falecimento é óbvio que o dinheiro vai para a viúva ou o filho. Ou seja,
+   > beneficiário é alguém que recebe o benefício **no lugar** do trabalhador."
+
+   Isso explica os três formatos do bloco: **completo** onde pode haver outra
+   pessoa, **inexistente** no REEMBOLSO RESCISÃO, e o "reduzido" sendo lixo de
+   formulário nos tipos em que quem recebe é o próprio trabalhador.
+
+   **Casos já confirmados pela BSS:**
+
+   | Tipo | Beneficiário | Porquê |
+   |---|---|---|
+   | REEMBOLSO RESCISÃO | **não existe** | "o trabalhador é demitido, ele mesmo receberá a indenização" — está vivo e capaz |
+   | CONSULTA MÉDICA | **não existe** | "significa que o trabalhador está ativo, ele mesmo é o beneficiário" |
+   | EXAME | **não existe** | idem |
+   | FALECIMENTO | sempre | "é óbvio que o dinheiro vai para a viúva ou o filho" |
+   | ACIDENTE / INCAPACITAÇÃO | pode haver | o trabalhador pode estar incapacitado para receber |
+   | BRINDE SINDICATO | ❓ | provavelmente igual a consulta/exame — confirmar |
+   | AUXÍLIO CRECHE | ❓ | o beneficiado é a criança, mas quem RECEBE é o pai/mãe trabalhador — confirmar |
+   | NATALIDADE | ❓ | os dados mostram os dois casos (ver abaixo) |
+
+   O teste é sempre o mesmo: **o trabalhador pode receber o dinheiro?** Se sim,
+   não há beneficiário. Não é sobre quem o benefício ajuda — é sobre quem
+   assina o recibo.
+
+   ❓ **Mas a regra pode não ser por tipo.** Na tela do analista, dois processos
+   de NATALIDADE aparecem lado a lado: num, "Nome do Trab." e "Nome
+   Beneficiário" são a MESMA pessoa (ELIS AGUIAR DO NASCIMENTO); no outro, são
+   DIFERENTES (PAULO GOMES DA SILVA AGUIAR → DENISE GOMES DE AGUIAR SILVA).
+   Se o mesmo tipo tem os dois casos, o bloco é **condicional ao caso**, não ao
+   tipo — e o formulário deveria perguntar ("outra pessoa vai receber?") em vez
+   de decidir sozinho pelo tipo escolhido.
+
+   Os 19 mil processos do legado já têm a resposta gravada. Rodar
+   `scripts/analisar_beneficiario.py`: ele compara `beneficiario_cpf` com o CPF
+   do trabalhador em cada tipo e classifica em SEM bloco / bloco OBRIGATÓRIO /
+   bloco OPCIONAL. Decidir depois disso, não antes.
+
+3b. **"Beneficiário reduzido" — É BUG DO LEGADO. NÃO REPLICAR.** ✅ Confirmado
    pela BSS (17/07/2026).
 
    Nos tipos simples (CONSULTA MÉDICA, EXAME, BRINDE SINDICATO, AUXÍLIO CRECHE)
