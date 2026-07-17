@@ -1,6 +1,23 @@
-/* Dashboard com KPIs e gráficos. */
+/* Dashboard com KPIs e gráficos — visão INTERNA da BSS. */
 
 const u = exigirLogin();
+
+/*
+ * Guarda de perfil na própria tela.
+ *
+ * O index.html já roteia empresa → dashboard-empresa.html, mas ninguém chega
+ * sempre pela porta da frente: aba aberta de antes, refresh, favorito, botão
+ * voltar, link antigo. Nesses casos o usuário caía AQUI e via
+ * "Erro ao carregar dashboard: Acesso restrito à equipe interna" — quatro
+ * vezes, uma por endpoint, numa tela de gráficos vazios.
+ *
+ * O 403 do backend é a segurança e está funcionando. Isto aqui é só cortesia:
+ * em vez de exibir erro pra quem está no lugar errado, leva pro lugar certo.
+ */
+if (u && u.perfil === "empresa") {
+  window.location.replace("/app/dashboard-empresa.html");
+}
+
 if (u) document.getElementById("usuario-info").textContent = `${u.nome} (${u.perfil})`;
 
 function brl(n) {
@@ -129,4 +146,7 @@ async function carregar() {
   }
 }
 
-carregar();
+// Não dispara as 4 chamadas se o usuário está sendo redirecionado daqui —
+// location.replace() não interrompe o script, e seriam 4 requisições fadadas
+// ao 403 antes da navegação acontecer.
+if (u && u.perfil !== "empresa") carregar();

@@ -165,14 +165,27 @@ têm tabela (ver §4).
    de conta (CORRENTE/…), Detalhe da conta (INDIVIDUAL/…), Chave PIX.
    Encaixa em `bss.processo_dados_bancarios` (seção 13 do schema).
 
-3. **"Beneficiário reduzido"** (CONSULTA MÉDICA, EXAME, BRINDE SINDICATO,
-   AUXÍLIO CRECHE): a tela mostra **só** Nome da Mãe do Beneficiário ⭑,
-   Nascimento do Beneficiário ⭑ e Bairro ⭑. Sem nome, sem CPF, sem CEP.
-   ❓ **Isto parece defeito do legado**, não regra: por que "Bairro" seria
-   obrigatório sem CEP nem cidade, e por que pedir a mãe do beneficiário sem
-   pedir o nome dele? Suspeita: são os 3 campos marcados como required no
-   formulário, e pros tipos simples o resto fica escondido. **Confirmar antes
-   de replicar** — replicar um bug por fidelidade seria burrice.
+3. **"Beneficiário reduzido" — É BUG DO LEGADO. NÃO REPLICAR.** ✅ Confirmado
+   pela BSS (17/07/2026).
+
+   Nos tipos simples (CONSULTA MÉDICA, EXAME, BRINDE SINDICATO, AUXÍLIO CRECHE)
+   a tela mostra **só** Nome da Mãe do Beneficiário ⭑, Nascimento ⭑ e Bairro ⭑
+   — sem nome, sem CPF, sem CEP. São três campos `required` órfãos: o resto do
+   bloco foi escondido pra esses tipos e os asteriscos ficaram para trás.
+
+   O sintoma denuncia a causa: pedir a mãe do beneficiário sem pedir o nome
+   dele, e exigir Bairro sem CEP nem cidade, não fecha em nenhuma leitura de
+   negócio.
+
+   ❓ **O que fica no lugar?** Duas saídas possíveis, e não dá pra deduzir:
+   - **bloco completo** — se esses benefícios têm beneficiário de verdade
+     (AUXÍLIO CRECHE, por exemplo: o beneficiário é a criança); ou
+   - **nenhum bloco** — se o beneficiário É o próprio trabalhador (o mais
+     provável pra CONSULTA MÉDICA, EXAME e BRINDE SINDICATO), como já acontece
+     em REEMBOLSO RESCISÃO, que não tem beneficiário nenhum.
+
+   Provavelmente a resposta é diferente por tipo — o que reforça a tabela
+   `tipo_beneficio_campo` (§4) em vez de `if` no código.
 
 **Beneficiário completo:** Nome, CPF, Telefone, Grau de parentesco (dropdown,
 default "Pai / Mãe"), Nome da Mãe ⭑, Nascimento ⭑, CEP, Endereço (readonly),
@@ -270,7 +283,37 @@ implementação do bloco 4 do formulário.**
 
 ---
 
-## 5. O que já foi feito (17/07/2026)
+## 5. Portal da Funerária — não é este portal
+
+Registrado aqui porque saiu na mesma conversa, mas **é um terceiro portal**, não
+uma variação do da empresa. ✅ Definição da BSS (17/07/2026):
+
+> A funerária **não vê empresas, boletos, dashboard, trabalhadores — nada**.
+> Acessa e vê **só os benefícios próprios**. Ao criar, **só aparece Acionamento
+> Funeral**. O formulário é simples. ❓ Definição dos campos: pendente.
+
+Por que isso não cabe no modelo atual:
+
+1. **O perfil não existe.** Hoje são admin/interno/analista/empresa/sindicato/
+   contabilidade. Falta `funeraria`.
+2. **O escopo é de outra natureza.** Empresa filtra por `usuario_empresa`,
+   sindicato por `usuario_sindicato`. A funerária não se prende a nenhum dos
+   dois: ela **abre e acompanha benefícios de trabalhador de qualquer
+   empresa/sindicato**, desde que tenha um Acionamento Funeral aberto. Muitas
+   vezes ela sabe do falecimento antes da BSS — acessa o portal com o CPF do
+   trabalhador e abre o processo pra ser reembolsada pelos serviços prestados.
+3. **Falta a coluna que define "próprios".** O escopo é "processo que EU abri",
+   e `bss.processo_beneficio` não tem `criado_por_id`. Sem isso não há como
+   filtrar.
+4. **Precisa de busca global por CPF**, sem escopo de empresa — o oposto do que
+   o `trabalhador_router` faz hoje.
+
+Ou seja: é uma **terceira dimensão de RLS**, mais coluna, mais perfil, mais
+tela. Não é "o portal da empresa com menos itens no menu".
+
+---
+
+## 6. O que já foi feito (17/07/2026)
 
 - ✅ `dashboard-empresa.html` — 3 listas **reais** (RLS já existia em
   `processo_router`, `boleto_router`, `trabalhador_router`) + modal de
