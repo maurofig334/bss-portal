@@ -27,11 +27,27 @@ def listar(
     adimplencia: str | None = None,
     regularidade: str | None = None,
     uf: str | None = None,
+    ids: list[int] | None = None,
     pagina: int = 1,
     por_pagina: int = 50,
     ordem: str = "razao_social",
     desc: bool = False,
 ) -> dict[str, Any]:
+    """
+    Lista empresas paginadas.
+
+    `ids` restringe o resultado a um conjunto de IDs — é o que dá escopo ao
+    perfil 'empresa' (usuario.empresas do JWT). PRECISA ser aplicado aqui, no
+    SQL, e não filtrando o resultado no router: filtrar depois de paginar faz
+    o banco trazer as 50 primeiras da base INTEIRA e descartar quase todas,
+    devolvendo página quase vazia e contagem de páginas da base toda. Foi
+    exatamente o que aconteceu — usuário com 11 empresas via "1 empresas
+    encontradas / Página 1 de 105", com as outras 10 espalhadas pelas páginas
+    seguintes, inalcançáveis na prática.
+
+    ids=None  → sem restrição (perfis internos).
+    ids=[]    → nenhuma empresa; o chamador deve tratar antes de chegar aqui.
+    """
     pagina = max(1, int(pagina))
     por_pagina = min(200, max(10, int(por_pagina)))
     if ordem not in ORDER_BY_OK:
@@ -62,6 +78,12 @@ def listar(
     if uf:
         where.append("v.uf = %(uf)s")
         params["uf"] = uf
+
+    if ids is not None:
+        # = ANY(array) em vez de IN (...): um único parâmetro, sem montar
+        # placeholder por item. Vale tanto pra 11 IDs quanto pra 500.
+        where.append("v.id = ANY(%(ids)s)")
+        params["ids"] = list(ids)
 
     where_sql = " AND ".join(where)
     sql_total = f"SELECT COUNT(*) AS total FROM bss.v_empresa v WHERE {where_sql}"

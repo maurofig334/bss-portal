@@ -24,25 +24,23 @@ def listar(
     ordem: str = "razao_social",
     desc: bool = False,
 ):
-    # Empresa só vê suas próprias; sindicato vê todas das empresas relacionadas (futuro)
+    # Escopo: perfil 'empresa' só enxerga as empresas vinculadas a ele
+    # (bss.usuario_empresa, carregado no JWT). O filtro vai pro SQL via
+    # `ids` — NÃO filtrar o resultado depois de paginar (ver docstring do
+    # empresa_repo.listar: era assim, e escondia 10 das 11 empresas do
+    # usuário atrás de 105 páginas).
+    ids: list[int] | None = None
     if usuario.perfil == "empresa":
-        # Para empresa, vamos retornar só a(s) dela(s)
         if not usuario.empresas:
-            return {"linhas": [], "total": 0, "pagina": 1, "por_pagina": por_pagina, "paginas": 0}
-        # TODO: filtrar por id IN (empresas) — por enquanto pega 1ª como atalho
-        # (pra simplificar; numa fase posterior adicionar filtro IN)
-        result = empresa_repo.listar(
-            busca=busca, status=status, adimplencia=adimplencia,
-            regularidade=regularidade, uf=uf,
-            pagina=pagina, por_pagina=por_pagina, ordem=ordem, desc=desc,
-        )
-        result["linhas"] = [r for r in result["linhas"] if r["id"] in usuario.empresas]
-        result["total"] = len(result["linhas"])
-        return result
+            # Sem vínculo não há o que mostrar. Devolve vazio coerente em vez
+            # de ids=[] (que geraria SQL válido mas semanticamente confuso).
+            return {"linhas": [], "total": 0, "pagina": 1,
+                    "por_pagina": por_pagina, "paginas": 0}
+        ids = usuario.empresas
 
     return empresa_repo.listar(
         busca=busca, status=status, adimplencia=adimplencia,
-        regularidade=regularidade, uf=uf,
+        regularidade=regularidade, uf=uf, ids=ids,
         pagina=pagina, por_pagina=por_pagina, ordem=ordem, desc=desc,
     )
 
