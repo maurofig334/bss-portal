@@ -157,7 +157,47 @@ def main() -> None:
     # perfil 'empresa'. Se der o número esperado, o backend está bom e o bug é
     # do frontend. Se der zero, o bug é aqui e o browser é inocente.
     print("\n" + "=" * 64)
-    print("CHAMANDO OS REPOS COMO O ROUTER CHAMA (perfil='empresa')")
+    print("ESCOPO COMPLETO — como o router chama HOJE (ids_empresa = todas)")
+    print("=" * 64)
+    print("Isto é o que a tela deve mostrar sem nenhum filtro escolhido.")
+
+    b = boleto_repo.listar(ids_empresa=ids, incluir_cancelados=False,
+                           pagina=1, por_pagina=50)
+    t = trabalhador_repo.listar(ids_empresa=ids, situacao="ativo",
+                                pagina=1, por_pagina=50)
+    p = processo_repo.listar(ids_empresa=ids, pagina=1, por_pagina=50)
+    print(f"  boletos    (sem cancelados)   → total={b['total']:<6} linhas={len(b['linhas'])}")
+    print(f"  trabalhad. (situacao='ativo') → total={t['total']:<6} linhas={len(t['linhas'])}")
+    print(f"  processos                     → total={p['total']:<6} linhas={len(p['linhas'])}")
+
+    if b["total"] == 0:
+        # Se o escopo inteiro devolve zero boleto mas a contagem por empresa
+        # achou centenas, o problema está DENTRO do boleto_repo — provavelmente
+        # no `WHERE v.id_empresa IS NOT NULL` combinado com algo, ou na view.
+        print("\n  ⚠ ZERO boletos no escopo inteiro. Comparando com a tabela crua:")
+        with get_pg_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT count(*) AS na_tabela
+                  FROM bss.boleto
+                 WHERE id_empresa = ANY(%s) AND status <> 'cancelado'
+                """,
+                (ids,),
+            )
+            print(f"     bss.boleto  → {cur.fetchone()['na_tabela']}")
+            cur.execute(
+                """
+                SELECT count(*) AS na_view
+                  FROM bss.v_boleto
+                 WHERE id_empresa = ANY(%s) AND status <> 'cancelado'
+                """,
+                (ids,),
+            )
+            print(f"     bss.v_boleto → {cur.fetchone()['na_view']}")
+            print("     Se a view tiver menos que a tabela, o problema é o JOIN da view.")
+
+    print("\n" + "=" * 64)
+    print("EMPRESA A EMPRESA (o filtro opcional da tela)")
     print("=" * 64)
 
     for id_emp in ids:
