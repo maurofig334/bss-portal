@@ -24,6 +24,7 @@ quando o frontend não manda id_empresa.
 import sys
 
 from app.database import get_pg_connection
+from app import boleto_repo, processo_repo, trabalhador_repo
 
 
 def main() -> None:
@@ -144,6 +145,38 @@ def main() -> None:
             print(f"\nBoletos da empresa padrão (id={ids[0]}) por status:")
             for r in st:
                 print(f"  {r['status']:<15} {r['qtd']:>5}")
+
+    # ------------------------------------------------------------------
+    # O TESTE QUE IMPORTA
+    # ------------------------------------------------------------------
+    # Tudo acima conta a TABELA. A tela não chama a tabela — chama o REPO, que
+    # lê VIEW, aplica filtros e paginação. Contar tabela e concluir sobre a tela
+    # é o mesmo erro do protocolo: validar a fórmula no lugar errado.
+    #
+    # Aqui chamamos o repo com EXATAMENTE os argumentos que o router monta pro
+    # perfil 'empresa'. Se der o número esperado, o backend está bom e o bug é
+    # do frontend. Se der zero, o bug é aqui e o browser é inocente.
+    print("\n" + "=" * 64)
+    print("CHAMANDO OS REPOS COMO O ROUTER CHAMA (perfil='empresa')")
+    print("=" * 64)
+
+    for id_emp in ids:
+        # boleto_router: empresa NUNCA vê cancelado (épico #21)
+        b = boleto_repo.listar(id_empresa=id_emp, incluir_cancelados=False,
+                               pagina=1, por_pagina=50)
+        # trabalhador_router: a TELA manda situacao='ativo' (preset do f-preset)
+        t_ativo = trabalhador_repo.listar(id_empresa=id_emp, situacao="ativo",
+                                          pagina=1, por_pagina=50)
+        # ...e sem preset, pra separar "não tem" de "o preset escondeu"
+        t_todos = trabalhador_repo.listar(id_empresa=id_emp,
+                                          pagina=1, por_pagina=50)
+        p = processo_repo.listar(id_empresa=id_emp, pagina=1, por_pagina=50)
+
+        print(f"\nempresa id={id_emp}")
+        print(f"  boletos    (incluir_cancelados=False) → total={b['total']:<6} linhas={len(b['linhas'])}")
+        print(f"  trabalhad. (situacao='ativo')         → total={t_ativo['total']:<6} linhas={len(t_ativo['linhas'])}")
+        print(f"  trabalhad. (sem filtro)               → total={t_todos['total']:<6} linhas={len(t_todos['linhas'])}")
+        print(f"  processos                             → total={p['total']:<6} linhas={len(p['linhas'])}")
 
         # A tela de Trabalhadores abre com o preset situacao='ativo'. Uma
         # empresa com 500 trabalhadores INATIVOS aparece vazia — e está certa.
