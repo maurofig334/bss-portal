@@ -313,13 +313,81 @@ tela. Não é "o portal da empresa com menos itens no menu".
 
 ---
 
-## 6. O que já foi feito (17/07/2026)
+## 6. O portal legado mostra trabalhadores que não existem
+
+Descoberto em 17/07/2026 auditando o login `maurofig334@gmail.com`, e
+**verificado por Mauro direto no SuiteCRM**:
+
+| RCOND GESTAO E TECNOLOGIA LTDA | trabalhadores ativos |
+|---|---|
+| portal legado | **22** |
+| SuiteCRM (a verdade) | **0** |
+| BSS, contando de verdade | **0** |
+
+Não é caso isolado: no login de teste, **6 das 11 empresas** divergiam. A
+5 ESTRELAS exibia **476** trabalhadores ativos e não tinha **nenhuma** linha.
+Somando as 11: o campo dizia 1.447, a realidade era 908.
+
+**Causa provável (hipótese de Mauro, que conhece o SuiteCRM):** é um *campo
+calculado* — recurso do SuiteCRM que totaliza via workflow. Ou ele roda no fim
+do dia e não pegou as inativações, ou o workflow travou em algum momento e o
+número congelou.
+
+**O BSS não errou: ele copiou.** A sync trouxe `qtd_trabalhadores_ativos` fiel
+ao legado, e a tela de Empresas passou a exibir o mesmo número fantasma —
+enquanto a tela de Trabalhadores, que filtra por `id_empresa_atual` de verdade,
+mostrava vazio. Dois números, duas fontes, um sistema.
+
+**Reviravolta durante a própria auditoria:** entre duas execuções do script, o
+campo foi recalculado e passou a bater com a realidade (1.447 → 908). Algum job
+reescreveu tudo e ninguém sabe qual — o schema só diz "atualizado por job".
+❓ **Que job é esse, quando roda, de onde tira o número?** Processo desconhecido
+mutando dado é problema por si só.
+
+### A lição de arquitetura
+
+Cache ou campo calculado, é a mesma classe: **número derivado, gravado, que
+descola da fonte**. A correção não é ter um job melhor — é não precisar de job.
+
+`bss.trabalhador` já tem o índice exato pra contar na hora:
+
+```sql
+CREATE INDEX idx_trab_emp_sind ON bss.trabalhador (id_empresa_atual, id_sindicato_atual)
+  WHERE situacao = 'ativo';
+```
+
+Índice **parcial**, filtrado em `situacao='ativo'` — feito pra esta pergunta.
+É o mesmo raciocínio que o schema já usou pra recusar a tabela física de
+empresa×sindicato ("no Postgres com índices certeiros, calcular on-the-fly
+roda em milissegundos").
+
+**Proposta:** `v_empresa` conta na hora; a coluna vira só espelho do legado
+pra reconciliação. Medir antes com `scripts/medir_contagem_trabalhadores.py`
+(cronometra as duas formas e mostra o EXPLAIN) — se o plano usar o índice
+parcial e ficar abaixo de 100ms por página, o cache não se justifica.
+
+### Ferramentas
+
+- `scripts/auditar_cache_trabalhadores.py` — cache × realidade na base inteira,
+  15 maiores divergências, e o contador de `id_empresa_atual IS NULL` (que
+  separa "cache do legado errado" de "nossa sync não vinculou").
+- `scripts/inspecionar_escopo_empresa.py` — por usuário: o que cada empresa
+  vinculada tem, e o que os repos devolvem quando chamados como o router chama.
+
+---
+
+## 7. O que já foi feito (17/07/2026)
 
 - ✅ `dashboard-empresa.html` — 3 listas **reais** (RLS já existia em
   `processo_router`, `boleto_router`, `trabalhador_router`) + modal de
   inadimplência. Só o `Adicionar` está desabilitado.
-- ✅ `js/empresa-atual.js` — seletor de empresa. Antes, o backend caía em
-  `usuario.empresas[0]` e o usuário via **1 das 11** empresas, sem saber qual.
+- ✅ **`empresas[0]` morto.** Descoberta central do dia: **não existe "empresa
+  atual"** — o portal legado lista as 11 empresas juntas, e as listas de
+  Boletos e Benefícios têm coluna "Empresa" justamente porque misturam. Os
+  routers agora separam **ESCOPO** (`ids_empresa`, do JWT, sempre aplicado) de
+  **FILTRO** (`id_empresa`, da tela, opcional). O filtro estreita dentro do
+  escopo, nunca alarga. `js/empresa-atual.js` virou filtro com "Todas" por
+  padrão — antes era uma prisão que escondia 10 empresas em silêncio.
 - ✅ `sidebar.js` filtra por perfil — Contatos e Sindicatos somem pra empresa.
 - ✅ Vazamentos fechados: `dashboard_router` (expunha o faturamento da BSS na
   primeira tela pós-login), `sindicato_router` (parâmetros comerciais),
