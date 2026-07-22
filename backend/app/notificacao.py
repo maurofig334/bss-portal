@@ -63,14 +63,26 @@ def _enviar(destinatarios: list[str], assunto: str, texto: str, html: str) -> No
         msg.add_alternative(html, subtype="html")
 
         ctx = ssl.create_default_context()
+        if not settings.SMTP_VERIFICAR_CERT:
+            # Ver o comentário de SMTP_VERIFICAR_CERT em config.py. Loga em
+            # WARNING toda vez de propósito: configuração insegura não deve
+            # virar silêncio confortável.
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            log.warning("SMTP com verificação de certificado DESLIGADA "
+                        "(SMTP_VERIFICAR_CERT=false) — não usar em produção")
+
         if settings.SMTP_SSL:
+            # SSL direto (465): já conecta criptografado.
             with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT,
-                                  context=ctx, timeout=15) as s:
+                                  context=ctx, timeout=20) as s:
                 s.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
                 s.send_message(msg)
         else:
-            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as s:
-                s.starttls(context=ctx)
+            # STARTTLS (587): conecta em claro e sobe pra TLS.
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=20) as s:
+                if settings.SMTP_USE_TLS:
+                    s.starttls(context=ctx)
                 s.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
                 s.send_message(msg)
 

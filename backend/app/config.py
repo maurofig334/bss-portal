@@ -37,8 +37,34 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM:     str = ""      # vazio → usa SMTP_USER
     SMTP_FROM_NOME: str = "BSS — Benefício Social Sindical"
-    # STARTTLS na 587 (padrão). Para SSL direto na 465, use SMTP_SSL=true.
-    SMTP_SSL:      bool = False
+
+    # DOIS JEITOS DE CRIPTOGRAFAR, QUE NÃO SÃO A MESMA COISA:
+    #
+    #   STARTTLS (porta 587) — conecta em claro e sobe pra TLS. É o padrão da
+    #     maioria dos provedores, inclusive Gmail. Use SMTP_USE_TLS=true.
+    #
+    #   SSL/TLS direto (porta 465) — já conecta criptografado.
+    #     Use SMTP_SSL=true.
+    #
+    # Ligar o errado dá erro de conexão ou timeout, não erro de senha — e a
+    # mensagem do smtplib não ajuda a perceber. Na dúvida: 587 → USE_TLS,
+    # 465 → SSL.
+    SMTP_USE_TLS:  bool = True    # STARTTLS (587) — o caso comum
+    SMTP_SSL:      bool = False   # SSL direto (465)
+
+    # SAÍDA DE EMERGÊNCIA — deixar TRUE sempre que possível.
+    #
+    # Hospedagem compartilhada costuma apresentar certificado emitido pro
+    # hostname real da máquina, não pro apelido do seu domínio, e o Python
+    # recusa com "Hostname mismatch". A solução CERTA é usar o hostname pro
+    # qual o certificado é válido — rode scripts/diagnosticar_smtp.py pra
+    # descobrir qual é.
+    #
+    # Só use FALSE se nenhum hostname válido funcionar. O tráfego continua
+    # criptografado, mas ninguém confere COM QUEM se está falando — abre porta
+    # pra man-in-the-middle. Aceitável em homologação com conta provisória;
+    # não levar pra produção com dado real de trabalhador.
+    SMTP_VERIFICAR_CERT: bool = True
 
     # Base pública do portal, usada pra montar o link do e-mail. Sem isto o
     # e-mail sairia com link relativo, que não clica.
