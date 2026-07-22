@@ -6,6 +6,7 @@ if (u) document.getElementById("usuario-info").textContent = `${u.nome} (${u.per
 let pagina = 1;
 let timer = null;
 let categoriaAtiva = "";
+let soAguardando = false;   // filtro do sino ligado?
 
 function fmtCPF(c) {
   if (!c) return "—";
@@ -33,7 +34,40 @@ function montarQuery() {
   // Perfil empresa: sem isto o backend cai em usuario.empresas[0] e mostra os
   // benefícios de UMA das N empresas do usuário. No-op pra perfis internos.
   comEmpresaAtual(params);
+  if (soAguardando) params.append("aguardando_resposta", "true");
   return params.toString();
+}
+
+/* -------------------------- sino de mensagens ---------------------------- */
+/*
+ * Conta os processos cuja ÚLTIMA mensagem veio do cliente. Clicar alterna o
+ * filtro. Some quando não há nada aguardando — sino sempre aceso vira paisagem
+ * e ninguém mais olha.
+ */
+async function carregarSininho() {
+  try {
+    const d = await apiFetch("/processos/aguardando-resposta/contagem");
+    const sino = document.getElementById("sininho");
+    if (d.aguardando > 0) {
+      sino.classList.remove("hidden");
+      document.getElementById("sininho-badge").textContent = d.aguardando;
+    } else {
+      sino.classList.add("hidden");
+      soAguardando = false;   // não deixa o filtro preso sem nada pra mostrar
+    }
+  } catch (e) { /* silencioso: o sino não pode derrubar a tela */ }
+}
+
+function filtrarAguardando() {
+  soAguardando = !soAguardando;
+  const sino = document.getElementById("sininho");
+  sino.classList.toggle("ring-2", soAguardando);
+  sino.classList.toggle("ring-rose-400", soAguardando);
+  sino.classList.toggle("rounded-full", soAguardando);
+  sino.title = soAguardando
+    ? "Mostrando só os que aguardam resposta — clique para ver todos"
+    : "Benefícios aguardando resposta";
+  recarregar();
 }
 
 const CATEGORIAS = [
@@ -87,7 +121,14 @@ async function carregar() {
 
     tbody.innerHTML = data.linhas.map(p => {
       const cor = p.status_cor || "#64748B";
-      const semResposta = p.ultima_atualizacao_portal_em ? "🔔" : "";
+      // 🔔 = a última mensagem visível veio do CLIENTE, ou seja, tem gente
+      // esperando resposta. Antes acendia com `ultima_atualizacao_portal_em`,
+      // um carimbo de data que nunca era escrito e que não saberia dizer se
+      // já houve resposta depois — o sino ficava acisso pra sempre ou nunca.
+      // Agora `aguardando_resposta` é derivado no SQL e apaga sozinho quando
+      // a BSS responde.
+      const semResposta = p.aguardando_resposta
+        ? `<span title="Cliente aguardando resposta">🔔</span>` : "";
       // (abrirProcesso está definido no fim do arquivo)
       return `
         <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer" onclick="abrirProcesso(${p.id})">
@@ -145,3 +186,4 @@ renderTabsCategoria();
 // Seletor de empresa (só pro perfil 'empresa' com +1 CNPJ) — ver empresa-atual.js
 montarSeletorEmpresa("#seletor-empresa", recarregar);
 carregar();
+carregarSininho();

@@ -19,6 +19,16 @@
             <div id="seletor-empresa" class="min-w-0"></div>
           </div>
           <div class="flex items-center gap-3 text-sm">
+            <!-- Sino: processos cuja última mensagem veio do cliente.
+                 Clicar filtra a lista. Mesmo padrão do sininho de contatos. -->
+            <button id="sininho" onclick="filtrarAguardando()"
+                    class="hidden relative text-lg leading-none hover:scale-110 transition-transform"
+                    title="Benefícios aguardando resposta">
+              🔔
+              <span id="sininho-badge"
+                    class="absolute -top-1 -right-1 bg-rose-600 text-white text-[10px]
+                           rounded-full px-1.5 py-0.5 font-medium"></span>
+            </button>
             <span id="usuario-info" class="text-slate-500">—</span>
             <button onclick="logout()" class="text-slate-500 hover:text-slate-800">Sair</button>
           </div>

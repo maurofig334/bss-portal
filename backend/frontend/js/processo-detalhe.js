@@ -8,6 +8,13 @@ if (u) document.getElementById("usuario-info").textContent = `${u.nome} (${u.per
 let _proc = null;
 const _relCarregada = new Set();
 
+// Espelha processo_repo.PERFIS_INTERNOS. Aqui é só pra decidir o que MOSTRAR
+// (nota interna, dropdown de status, lado do balão) — quem decide de verdade
+// é o backend. Esconder no frontend não é segurança.
+const EH_INTERNO = !!u && ["admin", "interno", "analista"].includes(u.perfil);
+
+let _statusOpcoes = null;   // cache do dropdown de status (carrega uma vez)
+
 /* ------------------------------- helpers -------------------------------- */
 
 function fmtData(d) { return d ? new Date(d).toLocaleDateString("pt-BR") : "—"; }
@@ -195,7 +202,11 @@ async function carregarRel(qual) {
   try {
     const dados = await apiFetch(`/processos/${id}/${qual}`);
     if (qual === "documentos") alvo.innerHTML = renderChecklist(dados);
-    else if (qual === "mensagens") alvo.innerHTML = renderMensagens(dados);
+    else if (qual === "mensagens") {
+      alvo.innerHTML = renderMensagens(dados);
+      // Só depois do innerHTML o <select> existe no DOM.
+      carregarStatusOpcoes();
+    }
     else if (qual === "pagamentos") alvo.innerHTML = renderPagamentos(dados);
   } catch (e) {
     _relCarregada.delete(qual);
@@ -302,19 +313,141 @@ function renderChecklist(docs) {
 
 /* ------------------------------ MENSAGENS ------------------------------- */
 
+/** Escapa texto vindo do banco antes de ir pra innerHTML. */
+function escHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
 function renderMensagens(msgs) {
-  if (!msgs || !msgs.length) {
-    return `<div class="py-10 text-center text-slate-400 text-sm">Nenhuma mensagem neste benefício.</div>`;
-  }
-  return `<div class="divide-y divide-slate-100">` + msgs.map(m => `
-    <div class="px-5 py-3 ${m.interno ? "bg-amber-50/50" : ""}">
-      <div class="flex items-center gap-2 flex-wrap">
-        <span class="font-medium text-slate-800 text-sm">${m.titulo || "(sem título)"}</span>
-        ${m.interno ? pill("Interno — cliente não vê", "bg-amber-100 text-amber-800") : ""}
-        <span class="text-xs text-slate-400">${fmtDataHora(m.criado_em)}</span>
+  const lista = (!msgs || !msgs.length)
+    ? `<div class="py-10 text-center text-slate-400 text-sm">
+         Nenhuma mensagem ainda.${EH_INTERNO ? "" : " Escreva abaixo para falar com a equipe da BSS."}
+       </div>`
+    : `<div class="divide-y divide-slate-100">` + msgs.map(m => {
+        // Balão à direita = "meu lado". Pro analista, o lado da BSS; pro
+        // cliente, o dele. Mensagem migrada (autor NULL) fica à esquerda.
+        const meuLado = EH_INTERNO ? !m.eh_externo : m.eh_externo;
+        const autor = m.autor_nome
+          ? escHtml(m.autor_nome)
+          : `<span class="italic text-slate-400">autor não identificado</span>`;
+
+        // Título só existe nas migradas — as novas nascem sem (chat livre).
+        const titulo = m.titulo
+          ? `<div class="font-medium text-slate-700 text-sm">${escHtml(m.titulo)}</div>` : "";
+
+        return `
+        <div class="px-5 py-3 ${m.interno ? "bg-amber-50/50" : ""}">
+          <div class="flex ${meuLado ? "justify-end" : "justify-start"}">
+            <div class="max-w-2xl ${meuLado ? "text-right" : ""}">
+              <div class="flex items-center gap-2 flex-wrap ${meuLado ? "justify-end" : ""}">
+                <span class="text-xs font-medium text-slate-600">${autor}</span>
+                ${m.eh_externo
+                  ? pill("Cliente", "bg-sky-100 text-sky-800")
+                  : (m.autor_perfil ? pill("BSS", "bg-indigo-100 text-indigo-800") : "")}
+                ${m.interno ? pill("Nota interna — cliente não vê", "bg-amber-100 text-amber-800") : ""}
+                <span class="text-xs text-slate-400">${fmtDataHora(m.criado_em)}</span>
+              </div>
+              ${titulo}
+              <div class="text-sm text-slate-700 mt-1 whitespace-pre-wrap">${escHtml((m.corpo || "").trim())}</div>
+            </div>
+          </div>
+        </div>`;
+      }).join("") + `</div>`;
+
+  return lista + caixaEscrita();
+}
+
+/** Caixa de composição. Internos ganham nota interna + mudança de status. */
+function caixaEscrita() {
+  const extras = EH_INTERNO ? `
+    <div class="flex items-center gap-4 flex-wrap mt-2">
+      <label class="inline-flex items-center text-xs text-slate-600">
+        <input type="checkbox" id="msg-interno" class="mr-2">
+        Nota interna <span class="text-slate-400 ml-1">(o cliente não vê)</span>
+      </label>
+      <label class="inline-flex items-center gap-2 text-xs text-slate-600">
+        Mudar status para
+        <select id="msg-status"
+                class="text-xs border border-slate-300 rounded-lg px-2 py-1 bg-white
+                       focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+          <option value="">— não mudar —</option>
+        </select>
+      </label>
+    </div>` : "";
+
+  return `
+    <div class="border-t border-slate-200 bg-slate-50/60 px-5 py-4">
+      <textarea id="msg-corpo" rows="3"
+                placeholder="${EH_INTERNO ? "Responder ao cliente…" : "Escreva para a equipe da BSS…"}"
+                class="w-full text-sm border border-slate-300 rounded-lg px-3 py-2
+                       focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
+      ${extras}
+      <div class="flex items-center justify-between gap-3 mt-2">
+        <span id="msg-erro" class="text-xs text-rose-600"></span>
+        <button id="msg-enviar" onclick="enviarMensagem()"
+                class="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white
+                       rounded-lg font-medium disabled:opacity-50">
+          Enviar
+        </button>
       </div>
-      <div class="text-sm text-slate-600 mt-1 whitespace-pre-wrap">${(m.corpo || "").trim()}</div>
-    </div>`).join("") + `</div>`;
+    </div>`;
+}
+
+/** Popula o dropdown de status a partir de bss.status_processo. */
+async function carregarStatusOpcoes() {
+  if (!EH_INTERNO) return;
+  const sel = document.getElementById("msg-status");
+  if (!sel) return;
+  try {
+    if (!_statusOpcoes) _statusOpcoes = await apiFetch("/processos/status-disponiveis");
+    sel.innerHTML = `<option value="">— não mudar —</option>` +
+      _statusOpcoes
+        // O status atual não entra: "mudar" pro que já é seria no-op (o
+        // backend ignora) e confundiria quem escolhe.
+        .filter(s => s.codigo !== _proc?.status)
+        .map(s => `<option value="${s.codigo}">${escHtml(s.nome)}</option>`).join("");
+  } catch (e) {
+    sel.parentElement.classList.add("hidden");   // some em vez de mostrar erro
+  }
+}
+
+async function enviarMensagem() {
+  const btn = document.getElementById("msg-enviar");
+  const txt = document.getElementById("msg-corpo");
+  const erro = document.getElementById("msg-erro");
+  erro.textContent = "";
+
+  const corpo = (txt.value || "").trim();
+  if (!corpo) { erro.textContent = "Escreva alguma coisa antes de enviar."; return; }
+
+  const body = { corpo };
+  if (EH_INTERNO) {
+    body.interno = document.getElementById("msg-interno")?.checked || false;
+    const st = document.getElementById("msg-status")?.value;
+    if (st) body.status_novo = st;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Enviando…";
+  try {
+    await apiFetch(`/processos/${getId()}/mensagens`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    // Recarrega a aba (invalida o lazy-load). Se o status mudou, recarrega o
+    // cabeçalho também — senão o topo continuaria mostrando o status antigo.
+    _relCarregada.delete("mensagens");
+    await carregarRel("mensagens");
+    if (body.status_novo) await carregar();
+  } catch (e) {
+    erro.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Enviar";
+  }
 }
 
 /* ---------------------------- CONTAS A PAGAR ---------------------------- */

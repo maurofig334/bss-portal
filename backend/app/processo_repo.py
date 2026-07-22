@@ -16,6 +16,15 @@ ORDER_BY_OK = {
     "ultima_atualizacao_portal_em",
 }
 
+# Perfis que representam a BSS (o "nosso lado" do chat). Espelha
+# auth.PERFIS_INTERNOS — 'contabilidade' fica de fora porque contadores são
+# gestores das empresas clientes, ou seja, gente do outro lado do balcão.
+#
+# É tupla (não set) porque entra direto em SQL como `NOT IN {PERFIS_INTERNOS}`:
+# a repr de tupla vira ('admin', 'interno', 'analista'), que é sintaxe válida.
+# A repr de set viraria {…} e quebraria. Não trocar o tipo sem olhar os usos.
+PERFIS_INTERNOS = ("admin", "interno", "analista")
+
 
 def _so_digitos(s: str | None) -> str:
     return re.sub(r"\D+", "", s or "")
@@ -29,6 +38,7 @@ def listar(
     id_empresa: int | None = None,
     ids_empresa: list[int] | None = None,
     id_sindicato: int | None = None,
+    aguardando_resposta: bool = False,
     pagina: int = 1,
     por_pagina: int = 50,
     ordem: str = "criado_em",
@@ -82,6 +92,21 @@ def listar(
     if ids_empresa is not None:
         where.append("v.id_empresa = ANY(%(ids_empresa)s)")
         params["ids_empresa"] = list(ids_empresa)
+    if aguardando_resposta:
+        # Mesma condição da coluna calculada no SELECT. Repetida aqui porque
+        # o Postgres não deixa referenciar alias de SELECT no WHERE.
+        where.append(f"""
+            EXISTS (
+                SELECT 1 FROM bss.processo_mensagem m
+                  JOIN bss_users u ON u.id = m.id_usuario
+                 WHERE m.id_processo = v.id
+                   AND u.perfil NOT IN {PERFIS_INTERNOS}
+                   AND m.interno = FALSE
+                   AND m.criado_em = (
+                        SELECT MAX(m2.criado_em) FROM bss.processo_mensagem m2
+                         WHERE m2.id_processo = v.id AND m2.interno = FALSE)
+            )
+        """)
     if id_sindicato:
         where.append("v.id_sindicato = %(id_sindicato)s")
         params["id_sindicato"] = id_sindicato
@@ -97,7 +122,21 @@ def listar(
             v.trabalhador_cpf, v.trabalhador_nome,
             v.beneficiario_nome, v.liberalidade,
             v.data_evento, v.data_finalizacao, v.criado_em,
-            v.ultima_atualizacao_portal_em
+            v.ultima_atualizacao_portal_em,
+            -- 🔔 da lista: a última mensagem visível é de usuário EXTERNO?
+            -- Derivado, não flag: some sozinho quando a BSS responde. O sino
+            -- antes acendia com ultima_atualizacao_portal_em, que é só um
+            -- carimbo de data e não sabe se já houve resposta depois.
+            EXISTS (
+                SELECT 1 FROM bss.processo_mensagem m
+                  JOIN bss_users u ON u.id = m.id_usuario
+                 WHERE m.id_processo = v.id
+                   AND u.perfil NOT IN {PERFIS_INTERNOS}
+                   AND m.interno = FALSE
+                   AND m.criado_em = (
+                        SELECT MAX(m2.criado_em) FROM bss.processo_mensagem m2
+                         WHERE m2.id_processo = v.id AND m2.interno = FALSE)
+            ) AS aguardando_resposta
         FROM bss.v_processo v
         WHERE {where_sql}
         ORDER BY v.{ordem} {direcao} NULLS LAST
@@ -318,16 +357,207 @@ def listar_mensagens(id_processo: int, incluir_internas: bool = True) -> list[di
     """
     Mensagens do processo (canal cliente ↔ analista).
     `interno=TRUE` é visível só pro staff — o portal do cliente não mostra.
+
+    Resolve o autor: num chat, "quem falou" é tão importante quanto o texto.
+    Antes devolvia só `id_usuario` cru, e a tela mostrava balões sem dono.
+
+    `autor_nome` NULL é esperado e não é defeito: as 37.630 mensagens migradas
+    do legado vieram com id_usuario nulo (usuário do SuiteCRM não mapeado).
+    A tela mostra "autor desconhecido" nesses casos.
     """
-    sql = """
-        SELECT id, titulo, corpo, interno, id_usuario, criado_em
-          FROM bss.processo_mensagem
-         WHERE id_processo = %s
+    sql = f"""
+        SELECT m.id, m.titulo, m.corpo, m.interno, m.id_usuario, m.criado_em,
+               u.nome   AS autor_nome,
+               u.perfil AS autor_perfil,
+               -- eh_externo decide o LADO do balão na tela. Autor desconhecido
+               -- (migrado) NÃO é tratado como externo: na dúvida, não fingir
+               -- que o cliente disse algo que talvez tenha sido a BSS.
+               (u.perfil IS NOT NULL AND u.perfil NOT IN {PERFIS_INTERNOS}) AS eh_externo
+          FROM bss.processo_mensagem m
+          LEFT JOIN bss_users u ON u.id = m.id_usuario
+         WHERE m.id_processo = %s
     """
     if not incluir_internas:
-        sql += " AND interno = FALSE"
-    sql += " ORDER BY criado_em ASC"
+        sql += " AND m.interno = FALSE"
+    sql += " ORDER BY m.criado_em ASC"
     with get_pg_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, (id_processo,))
             return list(cur.fetchall())
+
+
+def criar_mensagem(
+    id_processo: int,
+    id_usuario: int,
+    corpo: str,
+    interno: bool = False,
+    autor_eh_externo: bool = False,
+) -> dict[str, Any]:
+    """
+    Grava uma mensagem e devolve a linha criada (já com o autor resolvido).
+
+    `titulo` fica NULL de propósito: a coluna existe por herança do SuiteCRM e
+    continua preenchida nas 37.630 mensagens migradas, mas o canal novo é chat
+    livre — só corpo.
+
+    Quando quem escreve é EXTERNO, carimba `ultima_atualizacao_portal_em` no
+    processo. O schema já previa esse campo ("última ação do CLIENTE no portal…
+    usado pra detectar interação sem resposta"), mas nada o escrevia — por isso
+    o 🔔 da lista de Benefícios nunca significou nada.
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO bss.processo_mensagem
+                       (id_processo, id_usuario, corpo, interno)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+                """,
+                (id_processo, id_usuario, corpo.strip(), interno),
+            )
+            novo_id = cur.fetchone()["id"]
+
+            # Nota interna é conversa da equipe: não conta como interação do
+            # cliente e não deve acender o sino de "esperando resposta".
+            if autor_eh_externo and not interno:
+                cur.execute(
+                    "UPDATE bss.processo_beneficio "
+                    "   SET ultima_atualizacao_portal_em = NOW(), atualizado_em = NOW() "
+                    " WHERE id = %s",
+                    (id_processo,),
+                )
+
+            cur.execute(
+                f"""
+                SELECT m.id, m.titulo, m.corpo, m.interno, m.id_usuario, m.criado_em,
+                       u.nome AS autor_nome, u.perfil AS autor_perfil,
+                       (u.perfil IS NOT NULL AND u.perfil NOT IN {PERFIS_INTERNOS}) AS eh_externo
+                  FROM bss.processo_mensagem m
+                  LEFT JOIN bss_users u ON u.id = m.id_usuario
+                 WHERE m.id = %s
+                """,
+                (novo_id,),
+            )
+            linha = cur.fetchone()
+        conn.commit()
+    return linha
+
+
+def listar_status_disponiveis() -> list[dict[str, Any]]:
+    """
+    Status que o analista pode escolher ao responder.
+
+    Vem de bss.status_processo (ativo=TRUE), então o dropdown reflete a tabela
+    e não uma lista chumbada no JS. 'em_analise' está marcado como inativo lá
+    ("status morto no legado") e some sozinho.
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT codigo, nome, categoria, cor_hex "
+                "  FROM bss.status_processo WHERE ativo ORDER BY ordem"
+            )
+            return list(cur.fetchall())
+
+
+def status_existe(codigo: str) -> bool:
+    """Valida o status antes de gravar — a coluna é VARCHAR livre, sem FK."""
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM bss.status_processo WHERE codigo = %s AND ativo",
+                (codigo,),
+            )
+            return cur.fetchone() is not None
+
+
+def mudar_status(
+    id_processo: int,
+    status_novo: str,
+    id_usuario: int,
+    comentario: str | None = None,
+) -> None:
+    """
+    Muda o status do processo e registra em bss.processo_andamento.
+
+    A tabela de andamento é o audit trail: "permite reconstituir o histórico
+    completo do processo pra auditoria/relatórios" (schema §19). Mudar o status
+    sem registrar ali cega o histórico — por isso as duas coisas moram na mesma
+    função e na mesma transação.
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT status FROM bss.processo_beneficio WHERE id = %s FOR UPDATE",
+                (id_processo,),
+            )
+            atual = cur.fetchone()
+            if not atual or atual["status"] == status_novo:
+                conn.rollback()
+                return   # nada a fazer; não polui o histórico com no-op
+
+            cur.execute(
+                "UPDATE bss.processo_beneficio "
+                "   SET status = %s, atualizado_em = NOW() WHERE id = %s",
+                (status_novo, id_processo),
+            )
+            cur.execute(
+                """
+                INSERT INTO bss.processo_andamento
+                       (id_processo, status_anterior, status_novo,
+                        usuario_id, automatico, comentario)
+                VALUES (%s, %s, %s, %s, FALSE, %s)
+                """,
+                (id_processo, atual["status"], status_novo, id_usuario, comentario),
+            )
+        conn.commit()
+
+
+def contar_aguardando_resposta(
+    ids_empresa: list[int] | None = None,
+    ids_sindicato: list[int] | None = None,
+) -> int:
+    """
+    Quantos processos têm a ÚLTIMA mensagem vinda de usuário EXTERNO.
+
+    É a definição de "cliente esperando resposta", e é derivada — não depende
+    de flag que alguém precise lembrar de marcar ou limpar. Assim que a BSS
+    responde, o processo sai da conta sozinho.
+
+    Deliberadamente NÃO usa `ultima_atualizacao_portal_em`: aquele campo é um
+    carimbo de data que não sabe se já foi respondido depois.
+    """
+    where = ["1=1"]
+    params: list[Any] = []
+    if ids_empresa is not None:
+        where.append("p.id_empresa = ANY(%s)")
+        params.append(list(ids_empresa))
+    if ids_sindicato is not None:
+        where.append("p.id_sindicato = ANY(%s)")
+        params.append(list(ids_sindicato))
+
+    sql = f"""
+        SELECT COUNT(*) AS qtd
+          FROM bss.processo_beneficio p
+         WHERE {" AND ".join(where)}
+           AND EXISTS (
+                SELECT 1
+                  FROM bss.processo_mensagem m
+                  JOIN bss_users u ON u.id = m.id_usuario
+                 WHERE m.id_processo = p.id
+                   AND u.perfil NOT IN {PERFIS_INTERNOS}
+                   AND m.interno = FALSE
+                   -- é a última mensagem NÃO-INTERNA do processo?
+                   AND m.criado_em = (
+                        SELECT MAX(m2.criado_em)
+                          FROM bss.processo_mensagem m2
+                         WHERE m2.id_processo = p.id
+                           AND m2.interno = FALSE
+                   )
+           )
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchone()["qtd"]
