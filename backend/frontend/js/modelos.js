@@ -141,29 +141,55 @@ async function salvar() {
 
 /* ------------------------------ preview --------------------------------- */
 
+let _buscaTimer = null;
+
 async function abrirPreview() {
   document.getElementById("modal-preview").classList.remove("hidden");
-  const sel = document.getElementById("preview-alvo");
   document.getElementById("lbl-alvo").textContent =
     _atual.destinatario === "empresa"
       ? "Resolver contra a empresa:" : "Resolver contra o contato:";
 
-  // Carrega as opções uma vez por abertura.
-  sel.innerHTML = `<option>Carregando…</option>`;
+  const busca = document.getElementById("preview-busca");
+  busca.value = "";
+  busca.placeholder = _atual.destinatario === "empresa"
+    ? "Buscar empresa por razão social ou CNPJ…"
+    : "Buscar contato por nome, e-mail ou CNPJ…";
+  // Debounce: não dispara uma busca por tecla.
+  busca.oninput = () => { clearTimeout(_buscaTimer); _buscaTimer = setTimeout(buscarAlvos, 300); };
+
+  buscarAlvos();   // carga inicial (primeira página) até o usuário digitar
+}
+
+/**
+ * Busca alvos no BACKEND — não filtra uma lista de 50 no cliente. São 2.515
+ * contatos e ~5.250 empresas; a página fixa alfabética só mostrava os "A", e o
+ * maurofig ficava inalcançável. O /contatos e /empresas já aceitam `busca`.
+ */
+async function buscarAlvos() {
+  const termo = document.getElementById("preview-busca").value.trim();
+  const sel = document.getElementById("preview-alvo");
+  const q = termo ? `&busca=${encodeURIComponent(termo)}` : "";
   try {
     if (_atual.destinatario === "empresa") {
-      const r = await apiFetch("/empresas?por_pagina=50&ordem=razao_social");
-      _alvos = r.linhas.map(e => ({ id: e.id, rotulo: `${e.razao_social}` }));
+      const r = await apiFetch(`/empresas?por_pagina=30&ordem=razao_social${q}`);
+      _alvos = (r.linhas || []).map(e => ({ id: e.id, rotulo: e.razao_social }));
     } else {
-      const r = await apiFetch("/contatos?por_pagina=50");
+      const r = await apiFetch(`/contatos?por_pagina=30${q}`);
       _alvos = (r.linhas || []).map(c => ({ id: c.id, rotulo: `${c.nome} (${c.email})` }));
     }
   } catch (e) {
+    sel.innerHTML = `<option>Erro: ${esc(e.message)}</option>`;
+    return;
+  }
+
+  if (!_alvos.length) {
+    sel.innerHTML = `<option value="">Nenhum resultado</option>`;
     document.getElementById("preview-conteudo").innerHTML =
-      `<div class="text-sm text-rose-600">Erro ao listar alvos: ${esc(e.message)}</div>`;
+      `<div class="text-sm text-slate-400">Nenhum alvo encontrado para "${esc(termo)}".</div>`;
     return;
   }
   sel.innerHTML = _alvos.map(a => `<option value="${a.id}">${esc(a.rotulo)}</option>`).join("");
+  sel.selectedIndex = 0;
   carregarPreview();
 }
 
