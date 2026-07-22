@@ -31,6 +31,7 @@ from .boleto_router import router as boleto_router
 from .dashboard_router import router as dashboard_router
 from .contato_router import router as contato_router
 from .autocadastro_router import router as autocadastro_router
+from .modelo_router import router as modelo_router
 from .database import get_pg_connection
 
 
@@ -59,6 +60,7 @@ app.include_router(processo_router)
 app.include_router(boleto_router)
 app.include_router(dashboard_router)
 app.include_router(contato_router)
+app.include_router(modelo_router)
 # PÚBLICO — sem autenticação, por definição (porta de entrada de quem não tem
 # conta). Ver avisos de segurança no topo de autocadastro_router.py.
 app.include_router(autocadastro_router)
