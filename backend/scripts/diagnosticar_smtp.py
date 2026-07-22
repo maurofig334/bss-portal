@@ -29,17 +29,53 @@ import sys
 from app.config import settings
 
 
-def _nomes_do_certificado(cert: dict) -> list[str]:
-    """Extrai CN + todos os subjectAltName DNS do certificado."""
-    nomes = []
-    for campo in cert.get("subject", ()):
-        for chave, valor in campo:
-            if chave == "commonName":
-                nomes.append(valor)
-    for tipo, valor in cert.get("subjectAltName", ()):
-        if tipo == "DNS":
-            nomes.append(valor)
-    return sorted(set(nomes))
+def _nomes_via_openssl(pem: str) -> list[str]:
+    """
+    Extrai CN + subjectAltName usando o openssl da máquina.
+
+    Existe porque o projeto não tem a lib `cryptography` nas dependências, e
+    não vale adicioná-la só pra um script de diagnóstico. O openssl está em
+    qualquer Linux — e na OCI é o mesmo binário que emitiu nosso certificado
+    do bss.nexussistemas.com.br.
+    """
+    import subprocess
+    nomes: list[str] = []
+    try:
+        r = subprocess.run(
+            ["openssl", "x509", "-noout", "-subject", "-issuer",
+             "-enddate", "-ext", "subjectAltName"],
+            input=pem, capture_output=True, text=True, timeout=15,
+        )
+        saida = r.stdout + r.stderr
+    except Exception:
+        return []
+
+    for linha in saida.splitlines():
+        linha = linha.strip()
+        if linha.startswith("subject=") and "CN" in linha:
+            for parte in linha.split(","):
+                if "CN" in parte and "=" in parte:
+                    nomes.append(parte.split("=", 1)[1].strip())
+        elif linha.startswith("DNS:"):
+            for item in linha.split(","):
+                item = item.strip()
+                if item.startswith("DNS:"):
+                    nomes.append(item[4:].strip())
+        elif linha.startswith("issuer=") or linha.startswith("notAfter="):
+            print(f"  {linha}")
+
+    return sorted(set(n for n in nomes if n))
+
+
+def _casa(host: str, nome: str) -> bool:
+    """Wildcard do certificado cobre o host? (*.provedor.com casa com a.provedor.com)"""
+    if nome == host:
+        return True
+    if nome.startswith("*."):
+        sufixo = nome[1:]                       # ".provedor.com"
+        # Wildcard cobre UM nível só: *.x.com casa a.x.com, não a.b.x.com
+        return host.endswith(sufixo) and host.count(".") == nome.count(".")
+    return False
 
 
 def main() -> None:
@@ -66,44 +102,48 @@ def main() -> None:
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
 
+    # ATENÇÃO: com verify_mode=CERT_NONE, getpeercert() devolve {} — o Python
+    # só monta o dicionário quando VALIDOU o certificado. Mas
+    # getpeercert(binary_form=True) devolve o DER mesmo sem validar. Então
+    # pegamos os bytes e mandamos o openssl decodificar.
     try:
         if porta == 465:
             with smtplib.SMTP_SSL(host, porta, context=ctx, timeout=20) as s:
-                cert = s.sock.getpeercert()
+                der = s.sock.getpeercert(binary_form=True)
         else:
             with smtplib.SMTP(host, porta, timeout=20) as s:
                 s.starttls(context=ctx)
-                cert = s.sock.getpeercert()
+                der = s.sock.getpeercert(binary_form=True)
     except Exception as e:
         print(f"  ✗ falhou ao conectar: {e}")
         return
 
-    if not cert:
-        print("  ⚠ conectou, mas não consegui ler o certificado.")
+    if not der:
+        print("  ⚠ conectou, mas o servidor não apresentou certificado.")
         return
 
-    nomes = _nomes_do_certificado(cert)
+    nomes = _nomes_via_openssl(ssl.DER_cert_to_PEM_cert(der))
+    if not nomes:
+        print("  ⚠ não consegui decodificar o certificado (openssl ausente?).")
+        print("     Rode à mão:")
+        print(f"     openssl s_client -starttls smtp -connect {host}:{porta} "
+              f"</dev/null 2>/dev/null | openssl x509 -noout -subject -ext subjectAltName")
+        return
+
+    cert = {}   # mantido pra não quebrar os prints de emissor/validade abaixo
     print("\n=== O certificado é válido para ".ljust(56, "="))
     for n in nomes:
-        marca = "  ← é o que você está usando" if n == host else ""
+        marca = "  ← casa com o seu SMTP_HOST" if _casa(host, n) else ""
         print(f"  {n}{marca}")
 
-    emissor = ", ".join(
-        v for campo in cert.get("issuer", ()) for k, v in campo if k == "organizationName"
-    )
-    if emissor:
-        print(f"\n  emissor: {emissor}")
-    if cert.get("notAfter"):
-        print(f"  expira : {cert['notAfter']}")
-
     print("\n=== O QUE FAZER ".ljust(56, "="))
-    if host in nomes:
+    if any(_casa(host, n) for n in nomes):
         print(f"""
   '{host}' ESTÁ na lista. Então o erro de hostname não vem daqui —
   pode ser cadeia incompleta ou CA que o servidor não conhece.
 """)
     else:
-        # Wildcards do tipo *.provedor.com também valem — o Python resolve.
+        # Nome concreto é melhor sugestão que wildcard: o usuário copia e cola.
         candidatos = [n for n in nomes if not n.startswith("*")] or nomes
         sugestao = candidatos[0] if candidatos else "(nenhum)"
         print(f"""
