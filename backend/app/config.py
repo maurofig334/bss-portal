@@ -28,6 +28,22 @@ class Settings(BaseSettings):
     JWT_ALGORITHM:      str = "HS256"
     JWT_EXPIRE_MINUTES: int = 480  # 8h
 
+    # === E-mail (SMTP) ===
+    # Tudo opcional: sem SMTP_HOST o envio é desligado e o app roda igual —
+    # notificação nunca pode ser pré-requisito pro sistema funcionar.
+    SMTP_HOST:     str = ""
+    SMTP_PORT:     int = 587
+    SMTP_USER:     str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM:     str = ""      # vazio → usa SMTP_USER
+    SMTP_FROM_NOME: str = "BSS — Benefício Social Sindical"
+    # STARTTLS na 587 (padrão). Para SSL direto na 465, use SMTP_SSL=true.
+    SMTP_SSL:      bool = False
+
+    # Base pública do portal, usada pra montar o link do e-mail. Sem isto o
+    # e-mail sairia com link relativo, que não clica.
+    APP_BASE_URL:  str = "https://bss.nexussistemas.com.br"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

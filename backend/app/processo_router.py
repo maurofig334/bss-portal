@@ -9,11 +9,11 @@ GET  /processos/aguardando-resposta/contagem → número do sino
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 
 from .auth import UsuarioInfo, usuario_logado
-from . import processo_repo
+from . import notificacao, processo_repo
 
 
 router = APIRouter(prefix="/processos", tags=["processos"])
@@ -177,6 +177,7 @@ class MensagemIn(BaseModel):
 def criar_mensagem(
     id_processo: int,
     dados: MensagemIn,
+    tarefas: BackgroundTasks,
     usuario: Annotated[UsuarioInfo, Depends(usuario_logado)],
 ):
     """
@@ -191,12 +192,15 @@ def criar_mensagem(
     """
     _processo_no_escopo(id_processo, usuario)
     eh_interno = usuario.perfil in processo_repo.PERFIS_INTERNOS
+    # Externo pedindo nota interna é ignorado em silêncio — erro só ensinaria
+    # que a flag existe.
+    nota_interna = dados.interno and eh_interno
 
     msg = processo_repo.criar_mensagem(
         id_processo=id_processo,
         id_usuario=usuario.id,
         corpo=dados.corpo,
-        interno=dados.interno and eh_interno,
+        interno=nota_interna,
         autor_eh_externo=not eh_interno,
     )
 
@@ -214,6 +218,12 @@ def criar_mensagem(
             id_usuario=usuario.id,
             comentario=dados.corpo[:500],
         )
+
+    # E-mail pro cliente quando a BSS responde. Em BackgroundTask: o POST
+    # responde na hora e o SMTP não segura a tela de ninguém. Nota interna
+    # NÃO notifica — é conversa da equipe.
+    if eh_interno and not nota_interna:
+        tarefas.add_task(notificacao.avisar_mensagem_nova, id_processo, usuario.id)
 
     return msg
 
