@@ -28,7 +28,8 @@ def listar(
     tipo: str | None = None,
     id_empresa: int | None = None,
     id_sindicato: int | None = None,
-    aguardando_resposta: bool = False,
+    aguardando_resposta: bool = False,   # sino do analista
+    so_nao_lidas: bool = False,          # sino do cliente
     pagina: int = 1,
     por_pagina: int = 50,
     ordem: str = "criado_em",
@@ -61,10 +62,16 @@ def listar(
         elif id_sindicato not in usuario.sindicatos:
             raise HTTPException(403, "Sindicato fora do escopo")
 
+    # Marca d'água de leitura só interessa a quem não é da equipe: o sino do
+    # analista é derivado de quem falou por último (ver contar_nao_lidas).
+    eh_interno = usuario.perfil in processo_repo.PERFIS_INTERNOS
+    uid_leitura = None if eh_interno else usuario.id
+
     return processo_repo.listar(
         busca=busca, status=status, status_categoria=status_categoria, tipo=tipo,
         id_empresa=id_empresa, ids_empresa=ids_empresa, id_sindicato=id_sindicato,
         aguardando_resposta=aguardando_resposta,
+        id_usuario_leitura=uid_leitura, so_nao_lidas=so_nao_lidas,
         pagina=pagina, por_pagina=por_pagina, ordem=ordem, desc=desc,
     )
 
@@ -127,7 +134,23 @@ def mensagens(
     """
     _processo_no_escopo(id_processo, usuario)
     incluir_internas = usuario.perfil in processo_repo.PERFIS_INTERNOS
-    return processo_repo.listar_mensagens(id_processo, incluir_internas=incluir_internas)
+    msgs = processo_repo.listar_mensagens(id_processo, incluir_internas=incluir_internas)
+
+    # Abrir a aba = ler. Carimba a marca d'água DEPOIS de montar a resposta,
+    # senão o sino apagaria antes de o usuário ver o conteúdo.
+    #
+    # Só pra quem depende dela (não-internos): pro analista o sino é derivado
+    # de quem falou por último e não precisa de marca. Escrever à toa criaria
+    # linha por analista por processo, sem uso.
+    if usuario.perfil not in processo_repo.PERFIS_INTERNOS:
+        try:
+            processo_repo.marcar_lido(id_processo, usuario.id)
+        except Exception:
+            # Falha ao marcar leitura não pode derrubar a leitura em si —
+            # no pior caso o sino fica aceso mais um pouco.
+            pass
+
+    return msgs
 
 
 class MensagemIn(BaseModel):
@@ -210,16 +233,30 @@ def contar_aguardando_resposta(
     usuario: Annotated[UsuarioInfo, Depends(usuario_logado)],
 ):
     """
-    Quantos processos têm a última mensagem vinda do cliente — o número do
-    sino no topo do módulo de Benefícios.
+    Número do sino no topo do módulo de Benefícios. A CONTA MUDA POR PERFIL:
+
+    - equipe interna → processos cuja última mensagem veio do CLIENTE
+      ("alguém esperando resposta"). Apaga sozinho quando a BSS responde.
+
+    - cliente (empresa) → processos com mensagem que ELE ainda não leu.
+      Aqui é preciso marca d'água (bss.processo_mensagem_leitura): o cliente
+      muitas vezes lê e não responde, então "a última é da BSS" deixaria o
+      sino aceso pra sempre.
+
+    São perguntas diferentes de propósito, não inconsistência.
 
     ATENÇÃO À ORDEM: esta rota precisa vir antes de qualquer `/{id_processo}`
     que aceite string, senão o FastAPI tenta converter "aguardando-resposta"
     em int. Aqui está safe porque as rotas de id são todas `/{id}/algo`.
     """
+    if usuario.perfil in processo_repo.PERFIS_INTERNOS:
+        ids_sind = usuario.sindicatos if usuario.perfil == "sindicato" else None
+        qtd = processo_repo.contar_aguardando_resposta(None, ids_sind)
+        return {"aguardando": qtd, "modo": "aguardando_resposta"}
+
     ids_empresa = usuario.empresas if usuario.perfil == "empresa" else None
-    ids_sind = usuario.sindicatos if usuario.perfil == "sindicato" else None
-    return {"aguardando": processo_repo.contar_aguardando_resposta(ids_empresa, ids_sind)}
+    qtd = processo_repo.contar_nao_lidas(usuario.id, ids_empresa)
+    return {"aguardando": qtd, "modo": "nao_lidas"}
 
 
 @router.get("/{id_processo}")

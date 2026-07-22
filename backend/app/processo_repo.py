@@ -39,6 +39,11 @@ def listar(
     ids_empresa: list[int] | None = None,
     id_sindicato: int | None = None,
     aguardando_resposta: bool = False,
+    # Quando informado, calcula `nao_lida` por linha (mensagem que ESTE usuário
+    # ainda não viu) e habilita o filtro `so_nao_lidas`. É o sino do CLIENTE —
+    # ver contar_nao_lidas() pro porquê de ser pergunta diferente da do analista.
+    id_usuario_leitura: int | None = None,
+    so_nao_lidas: bool = False,
     pagina: int = 1,
     por_pagina: int = 50,
     ordem: str = "criado_em",
@@ -111,6 +116,29 @@ def listar(
         where.append("v.id_sindicato = %(id_sindicato)s")
         params["id_sindicato"] = id_sindicato
 
+    # Sino do CLIENTE: existe mensagem visível, que não é minha, criada depois
+    # da minha última visita? Sem id_usuario_leitura a coluna vira FALSE
+    # constante — o analista não usa essa conta.
+    if id_usuario_leitura is not None:
+        params["uid_leitura"] = id_usuario_leitura
+        sql_nao_lida = """
+            EXISTS (
+                SELECT 1 FROM bss.processo_mensagem m
+                 WHERE m.id_processo = v.id
+                   AND m.interno = FALSE
+                   AND m.id_usuario IS DISTINCT FROM %(uid_leitura)s
+                   AND m.criado_em > COALESCE(
+                        (SELECT l.lido_ate FROM bss.processo_mensagem_leitura l
+                          WHERE l.id_processo = v.id
+                            AND l.id_usuario = %(uid_leitura)s),
+                        '-infinity'::timestamptz)
+            )
+        """
+        if so_nao_lidas:
+            where.append(sql_nao_lida)
+    else:
+        sql_nao_lida = "FALSE"
+
     where_sql = " AND ".join(where)
     sql_total = f"SELECT COUNT(*) AS total FROM bss.v_processo v WHERE {where_sql}"
     sql_lista = f"""
@@ -136,7 +164,8 @@ def listar(
                    AND m.criado_em = (
                         SELECT MAX(m2.criado_em) FROM bss.processo_mensagem m2
                          WHERE m2.id_processo = v.id AND m2.interno = FALSE)
-            ) AS aguardando_resposta
+            ) AS aguardando_resposta,
+            {sql_nao_lida} AS nao_lida
         FROM bss.v_processo v
         WHERE {where_sql}
         ORDER BY v.{ordem} {direcao} NULLS LAST
@@ -512,6 +541,73 @@ def mudar_status(
                 (id_processo, atual["status"], status_novo, id_usuario, comentario),
             )
         conn.commit()
+
+
+def marcar_lido(id_processo: int, id_usuario: int) -> None:
+    """
+    Carimba "li até agora" — chamado quando o usuário abre a aba de mensagens.
+
+    NOW() e não o criado_em da última mensagem: se alguém escrever no exato
+    instante da leitura, o pior caso é o usuário não ver o sino de uma
+    mensagem que já estava na tela. O contrário (sino aceso pra sempre) é pior.
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO bss.processo_mensagem_leitura (id_usuario, id_processo, lido_ate)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (id_usuario, id_processo) DO UPDATE
+                    SET lido_ate = NOW(), atualizado_em = NOW()
+                """,
+                (id_usuario, id_processo),
+            )
+        conn.commit()
+
+
+def contar_nao_lidas(
+    id_usuario: int,
+    ids_empresa: list[int] | None = None,
+) -> int:
+    """
+    Quantos processos têm mensagem que este usuário ainda não viu — o sino do
+    CLIENTE.
+
+    Diferente do sino do analista, que é "quem falou por último". Aqui é "o que
+    eu ainda não li", porque o cliente frequentemente lê e não responde: sem
+    marca d'água, o sino nunca apagaria.
+
+    Mensagem escrita pelo PRÓPRIO usuário nunca conta como não lida.
+    """
+    # Params nomeados: com posicionais, o id_usuario apareceria duas vezes em
+    # pontos distantes do SQL e a ordem viraria armadilha.
+    where = ["1=1"]
+    params: dict[str, Any] = {"uid": id_usuario}
+    if ids_empresa is not None:
+        where.append("p.id_empresa = ANY(%(ids_emp)s)")
+        params["ids_emp"] = list(ids_empresa)
+
+    sql = f"""
+        SELECT COUNT(*) AS qtd
+          FROM bss.processo_beneficio p
+          LEFT JOIN bss.processo_mensagem_leitura l
+                 ON l.id_processo = p.id AND l.id_usuario = %(uid)s
+         WHERE {" AND ".join(where)}
+           AND EXISTS (
+                SELECT 1 FROM bss.processo_mensagem m
+                 WHERE m.id_processo = p.id
+                   AND m.interno = FALSE
+                   -- o que EU escrevi nunca é novidade pra mim
+                   AND m.id_usuario IS DISTINCT FROM %(uid)s
+                   -- nunca abri o processo (sem linha de leitura),
+                   -- ou a mensagem chegou depois da minha última visita
+                   AND (l.lido_ate IS NULL OR m.criado_em > l.lido_ate)
+           )
+    """
+    with get_pg_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchone()["qtd"]
 
 
 def contar_aguardando_resposta(

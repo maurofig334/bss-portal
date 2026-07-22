@@ -8,6 +8,10 @@ let timer = null;
 let categoriaAtiva = "";
 let soAguardando = false;   // filtro do sino ligado?
 
+// Espelha processo_repo.PERFIS_INTERNOS. Aqui só decide o que a tela MOSTRA;
+// quem decide de verdade é o backend.
+const EH_INTERNO = !!u && ["admin", "interno", "analista"].includes(u.perfil);
+
 function fmtCPF(c) {
   if (!c) return "—";
   const d = String(c).replace(/\D/g, "");
@@ -34,7 +38,12 @@ function montarQuery() {
   // Perfil empresa: sem isto o backend cai em usuario.empresas[0] e mostra os
   // benefícios de UMA das N empresas do usuário. No-op pra perfis internos.
   comEmpresaAtual(params);
-  if (soAguardando) params.append("aguardando_resposta", "true");
+  // O sino filtra coisas diferentes conforme o lado do balcão:
+  //   analista → processos em que o CLIENTE falou por último
+  //   cliente  → processos com mensagem que ELE ainda não leu
+  if (soAguardando) {
+    params.append(EH_INTERNO ? "aguardando_resposta" : "so_nao_lidas", "true");
+  }
   return params.toString();
 }
 
@@ -64,9 +73,10 @@ function filtrarAguardando() {
   sino.classList.toggle("ring-2", soAguardando);
   sino.classList.toggle("ring-rose-400", soAguardando);
   sino.classList.toggle("rounded-full", soAguardando);
+  const rotulo = EH_INTERNO ? "aguardam resposta" : "têm mensagem nova";
   sino.title = soAguardando
-    ? "Mostrando só os que aguardam resposta — clique para ver todos"
-    : "Benefícios aguardando resposta";
+    ? `Mostrando só os que ${rotulo} — clique para ver todos`
+    : `Benefícios que ${rotulo}`;
   recarregar();
 }
 
@@ -127,8 +137,9 @@ async function carregar() {
       // já houve resposta depois — o sino ficava acisso pra sempre ou nunca.
       // Agora `aguardando_resposta` é derivado no SQL e apaga sozinho quando
       // a BSS responde.
-      const semResposta = p.aguardando_resposta
-        ? `<span title="Cliente aguardando resposta">🔔</span>` : "";
+      const semResposta = EH_INTERNO
+        ? (p.aguardando_resposta ? `<span title="Cliente aguardando resposta">🔔</span>` : "")
+        : (p.nao_lida ? `<span title="Mensagem nova da BSS">🔔</span>` : "");
       // (abrirProcesso está definido no fim do arquivo)
       return `
         <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer" onclick="abrirProcesso(${p.id})">
