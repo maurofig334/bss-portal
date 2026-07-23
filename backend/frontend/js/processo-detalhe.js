@@ -457,26 +457,47 @@ function renderPagamentos(pgs) {
     return `<div class="py-10 text-center text-slate-400 text-sm">Nenhuma parcela gerada para este benefício.</div>`;
   }
   const total = pgs.reduce((a, p) => a + Number(p.valor || 0), 0);
+  // Beneficiário por parcela só aparece como coluna se variar entre as
+  // parcelas (ex: pensão alimentícia divide entre pessoas). Se for sempre o
+  // mesmo, o cabeçalho do benefício já mostra — não repetir em toda linha.
+  const nomes = new Set(pgs.map(p => p.beneficiario_nome || ""));
+  const mostrarBenef = nomes.size > 1;
+
+  const badgeStatus = (s) => {
+    const cor = { pago: "bg-emerald-50 text-emerald-700",
+                  pendente: "bg-amber-50 text-amber-700",
+                  cancelado: "bg-slate-100 text-slate-500" }[s] || "bg-slate-100 text-slate-600";
+    return `<span class="px-2 py-0.5 rounded-full text-xs ${cor}">${s || "—"}</span>`;
+  };
+
   const corpo = pgs.map(p => `
     <tr class="border-t border-slate-100 hover:bg-slate-50">
       <td class="px-5 py-2 text-center font-mono">${p.parcela}</td>
+      ${mostrarBenef ? `<td class="px-3 py-2 text-xs">${p.beneficiario_nome || "—"}</td>` : ""}
       <td class="px-3 py-2 text-right font-mono">${brl(p.valor)}</td>
-      <td class="px-3 py-2 text-xs">${p.forma_pagamento || "—"}</td>
-      <td class="px-3 py-2 text-center text-xs">${(p.status || "—").toUpperCase()}</td>
-      <td class="px-3 py-2 text-center text-xs text-slate-500">${fmtData(p.data_vencimento)}</td>
+      <td class="px-3 py-2 text-xs">${(p.forma_pagamento || "—").toUpperCase()}</td>
+      <td class="px-3 py-2 text-center">${badgeStatus(p.status)}</td>
+      <td class="px-3 py-2 text-center text-xs text-slate-500">${fmtData(p.data_prevista)}</td>
       <td class="px-3 py-2 text-center text-xs text-slate-500">${fmtData(p.data_pagamento)}</td>
     </tr>`).join("");
+
+  // Só conta o que ainda não foi pago, pro financeiro ver "quanto falta".
+  const pendente = pgs.filter(p => p.status !== "pago" && p.status !== "cancelado")
+                      .reduce((a, p) => a + Number(p.valor || 0), 0);
+
   return `<div class="overflow-x-auto"><table class="w-full text-sm">
       <thead class="bg-slate-50 text-slate-500"><tr>
         <th class="px-5 py-2 text-center">Parcela</th>
+        ${mostrarBenef ? `<th class="px-3 py-2 text-left">Beneficiário</th>` : ""}
         <th class="px-3 py-2 text-right">Valor</th>
         <th class="px-3 py-2 text-left">Forma</th>
         <th class="px-3 py-2 text-center">Status</th>
-        <th class="px-3 py-2 text-center">Vencimento</th>
+        <th class="px-3 py-2 text-center">Prevista</th>
         <th class="px-3 py-2 text-center">Pagamento</th>
       </tr></thead><tbody>${corpo}</tbody></table></div>
-      <div class="px-5 py-2 text-xs text-slate-500 border-t border-slate-100">
-        ${pgs.length} parcela(s) · total <b class="font-mono">${brl(total)}</b>
+      <div class="px-5 py-2 text-xs text-slate-500 border-t border-slate-100 flex gap-4">
+        <span>${pgs.length} parcela(s) · total <b class="font-mono">${brl(total)}</b></span>
+        ${pendente > 0 ? `<span>a pagar <b class="font-mono text-amber-700">${brl(pendente)}</b></span>` : ""}
       </div>`;
 }
 
