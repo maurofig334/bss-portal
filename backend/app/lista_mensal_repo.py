@@ -116,19 +116,40 @@ def processar_carga_trabalhadores(
     if not linhas:
         return {"qtd_processadas": 0, "qtd_inativadas": 0, "listas_criadas": []}
 
-    # Agrupa por empresa (1 lista_mensal por empresa)
+    # ========================================================================
+    # VERSÃO EM LOTE (23/07/2026) — substituiu o loop linha-a-linha.
+    #
+    # Antes: por linha fazia SELECT + UPDATE/INSERT + INSERT (3+ round-trips ao
+    # Postgres). Numa planilha de 5.000 linhas isso era ~15.000 idas e voltas;
+    # no pico mensal (350k trabalhadores) o tempo era o gargalo.
+    #
+    # Agora: sobe TUDO de uma vez pra uma tabela de staging via COPY, e resolve
+    # com um punhado de statements set-based. Mesmo resultado, ordens de
+    # grandeza mais rápido.
+    #
+    # SEMÂNTICA PRESERVADA (com um refinamento explícito):
+    #   - upsert de trabalhador por CPF (cpf não tem UNIQUE — legado tem dupes);
+    #   - 1 lista_mensal_item por (trabalhador, empresa, mês), último vence;
+    #   - ausentes do CNPJ viram item 'inativo' (snapshot da saída);
+    #   - trabalhador vira 'inativo' se não tem nenhum vínculo ativo no mês.
+    #   REFINAMENTO: quando o mesmo CPF aparece em várias linhas, "o último
+    #   vence" virou DETERMINÍSTICO (ordena por `ordem`, a posição na planilha),
+    #   em vez de depender da ordem do loop. Comportamento igual, agora estável.
+    # ========================================================================
     por_empresa: dict[int, list[dict]] = {}
     for ln in linhas:
         por_empresa.setdefault(ln["id_empresa"], []).append(ln)
 
     listas_criadas: list[int] = []
-    qtd_processadas = 0
+    qtd_processadas = len(linhas)   # 1 por linha de entrada (igual ao loop antigo)
     qtd_inativadas = 0
 
     with get_pg_connection() as conn:
         with conn.cursor() as cur:
+            # 1) Uma lista_mensal por empresa. São poucas empresas por upload,
+            #    então o loop aqui é barato. Guarda id_empresa → id_lista.
+            empresa_lista: dict[int, int] = {}
             for id_empresa, items in por_empresa.items():
-                # 1) Cria lista_mensal pra essa empresa+mes
                 cur.execute(
                     """
                     INSERT INTO bss.lista_mensal
@@ -139,115 +160,174 @@ def processar_carga_trabalhadores(
                     """,
                     (id_empresa, mes_referencia, arquivo_nome, len(items)),
                 )
-                id_lista = cur.fetchone()["id"]
-                listas_criadas.append(id_lista)
+                lid = cur.fetchone()["id"]
+                empresa_lista[id_empresa] = lid
+                listas_criadas.append(lid)
 
-                # 2) Pra cada linha: upsert trabalhador + insert lista_mensal_item
-                cpfs_neste_upload: set[str] = set()
-                for it in items:
-                    # cpf não tem UNIQUE no schema (legado tem dupes), então
-                    # fazemos SELECT+UPDATE/INSERT manual em vez de ON CONFLICT.
-                    cur.execute(
-                        "SELECT id FROM bss.trabalhador WHERE cpf = %s LIMIT 1",
-                        (it["cpf"],),
-                    )
-                    row = cur.fetchone()
-                    if row:
-                        id_trab = row["id"]
-                        cur.execute(
-                            """
-                            UPDATE bss.trabalhador
-                               SET nome_completo      = %s,
-                                   id_empresa_atual   = %s,
-                                   id_sindicato_atual = %s,
-                                   mes_ultimo_vinculo = %s,
-                                   situacao           = 'ativo',
-                                   atualizado_em      = NOW()
-                             WHERE id = %s
-                            """,
-                            (it["nome"], id_empresa, it["id_sindicato"],
-                             mes_referencia, id_trab),
-                        )
-                    else:
-                        cur.execute(
-                            """
-                            INSERT INTO bss.trabalhador
-                                (cpf, nome_completo, id_empresa_atual, id_sindicato_atual,
-                                 mes_ultimo_vinculo, situacao, titularidade)
-                            VALUES (%s, %s, %s, %s, %s, 'ativo', 'titular')
-                            RETURNING id
-                            """,
-                            (it["cpf"], it["nome"], id_empresa, it["id_sindicato"],
-                             mes_referencia),
-                        )
-                        id_trab = cur.fetchone()["id"]
+            # 2) Staging temporária + COPY de todas as linhas de uma vez.
+            #    ON COMMIT DROP: some sozinha ao fechar a transação.
+            cur.execute(
+                """
+                CREATE TEMP TABLE _stage (
+                    id_empresa   BIGINT,
+                    id_lista     BIGINT,
+                    cpf          TEXT,
+                    nome         TEXT,
+                    id_sindicato BIGINT,
+                    ordem        INT      -- posição na planilha (desempate)
+                ) ON COMMIT DROP
+                """
+            )
+            with cur.copy(
+                "COPY _stage (id_empresa, id_lista, cpf, nome, id_sindicato, ordem) "
+                "FROM STDIN"
+            ) as cp:
+                for i, ln in enumerate(linhas):
+                    cp.write_row((
+                        ln["id_empresa"], empresa_lista[ln["id_empresa"]],
+                        ln["cpf"], ln["nome"], ln["id_sindicato"], i,
+                    ))
+            cur.execute("CREATE INDEX ON _stage (cpf)")
+            cur.execute("ANALYZE _stage")
 
-                    # INSERT lista_mensal_item (UNIQUE por trab+mes+empresa permite multi)
-                    cur.execute(
-                        """
-                        INSERT INTO bss.lista_mensal_item
-                            (id_lista_mensal, id_trabalhador, id_empresa, id_sindicato,
-                             mes_referencia, nome_completo, titularidade, situacao_no_upload)
-                        VALUES (%s, %s, %s, %s, %s, %s, 'titular', 'ativo')
-                        ON CONFLICT (id_trabalhador, mes_referencia, id_empresa) DO UPDATE
-                           SET id_lista_mensal     = EXCLUDED.id_lista_mensal,
-                               id_sindicato        = EXCLUDED.id_sindicato,
-                               nome_completo       = EXCLUDED.nome_completo,
-                               situacao_no_upload  = 'ativo'
-                        """,
-                        (id_lista, id_trab, id_empresa, it["id_sindicato"],
-                         mes_referencia, it["nome"]),
-                    )
-                    cpfs_neste_upload.add(it["cpf"])
-                    qtd_processadas += 1
+            # 3) Mapa cpf → id de trabalhador JÁ existente. DISTINCT ON escolhe
+            #    um id por cpf de forma determinística (o loop antigo usava
+            #    LIMIT 1 sem ordem — aqui fica o menor id, estável).
+            cur.execute(
+                """
+                CREATE TEMP TABLE _mapa (cpf TEXT PRIMARY KEY, id BIGINT) ON COMMIT DROP;
+                INSERT INTO _mapa (cpf, id)
+                SELECT DISTINCT ON (t.cpf) t.cpf, t.id
+                  FROM bss.trabalhador t
+                 WHERE t.cpf IN (SELECT DISTINCT cpf FROM _stage)
+                 ORDER BY t.cpf, t.id
+                """
+            )
 
-                # 3) Desativação automática POR CNPJ (= por id_empresa):
-                #    trabalhadores que estavam ativos nesta empresa e não vieram.
-                #    Marca lista_mensal_item desse upload com situacao_no_upload='inativo'
-                #    pra registrar a saída como snapshot.
-                if cpfs_neste_upload:
-                    cur.execute(
-                        """
-                        WITH ausentes AS (
-                            SELECT t.id, t.cpf, t.nome_completo, t.id_sindicato_atual
-                              FROM bss.trabalhador t
-                             WHERE t.id_empresa_atual = %s
-                               AND t.situacao = 'ativo'
-                               AND t.cpf <> ALL(%s)
-                        )
-                        INSERT INTO bss.lista_mensal_item
-                            (id_lista_mensal, id_trabalhador, id_empresa, id_sindicato,
-                             mes_referencia, nome_completo, titularidade, situacao_no_upload)
-                        SELECT %s, id, %s, COALESCE(id_sindicato_atual, %s),
-                               %s, nome_completo, 'titular', 'inativo'
-                          FROM ausentes
-                        ON CONFLICT (id_trabalhador, mes_referencia, id_empresa) DO UPDATE
-                            SET situacao_no_upload = 'inativo'
-                        RETURNING id_trabalhador
-                        """,
-                        (id_empresa, sorted(cpfs_neste_upload),
-                         id_lista, id_empresa, items[0]["id_sindicato"],
-                         mes_referencia),
-                    )
-                    inativados_ids = [r["id_trabalhador"] for r in cur.fetchall()]
-                    if inativados_ids:
-                        # Atualiza t.situacao='inativo' SE não tem vínculo ativo em
-                        # nenhuma outra empresa neste mês
-                        cur.execute(
-                            """
-                            UPDATE bss.trabalhador t
-                               SET situacao = 'inativo', atualizado_em = NOW()
-                             WHERE t.id = ANY(%s)
-                               AND NOT EXISTS (
-                                   SELECT 1 FROM bss.lista_mensal_item lmi
-                                    WHERE lmi.id_trabalhador = t.id
-                                      AND lmi.mes_referencia = %s
-                                      AND lmi.situacao_no_upload = 'ativo'
-                               )
-                            """,
-                            (inativados_ids, mes_referencia),
-                        )
-                        qtd_inativadas += cur.rowcount
+            # 4) Linha "vencedora" por cpf (a última da planilha) — define o
+            #    estado final do trabalhador (nome/empresa/sindicato).
+            cur.execute(
+                """
+                CREATE TEMP TABLE _vencedor ON COMMIT DROP AS
+                SELECT DISTINCT ON (cpf) cpf, nome, id_empresa, id_sindicato
+                  FROM _stage
+                 ORDER BY cpf, ordem DESC
+                """
+            )
+
+            # 5) UPDATE dos trabalhadores existentes, todos de uma vez.
+            cur.execute(
+                """
+                UPDATE bss.trabalhador t
+                   SET nome_completo      = v.nome,
+                       id_empresa_atual   = v.id_empresa,
+                       id_sindicato_atual = v.id_sindicato,
+                       mes_ultimo_vinculo = %s,
+                       situacao           = 'ativo',
+                       atualizado_em      = NOW()
+                  FROM _vencedor v
+                  JOIN _mapa m ON m.cpf = v.cpf
+                 WHERE t.id = m.id
+                """,
+                (mes_referencia,),
+            )
+
+            # 6) INSERT dos trabalhadores novos (cpf que não estava no _mapa),
+            #    e joga os ids recém-criados de volta no _mapa pra o passo 7
+            #    conseguir resolver o id_trabalhador.
+            cur.execute(
+                """
+                WITH novos AS (
+                    INSERT INTO bss.trabalhador
+                        (cpf, nome_completo, id_empresa_atual, id_sindicato_atual,
+                         mes_ultimo_vinculo, situacao, titularidade)
+                    SELECT v.cpf, v.nome, v.id_empresa, v.id_sindicato,
+                           %s, 'ativo', 'titular'
+                      FROM _vencedor v
+                     WHERE NOT EXISTS (SELECT 1 FROM _mapa m WHERE m.cpf = v.cpf)
+                    RETURNING id, cpf
+                )
+                INSERT INTO _mapa (cpf, id) SELECT cpf, id FROM novos
+                """,
+                (mes_referencia,),
+            )
+
+            # 7) lista_mensal_item pra cada linha ATIVA. DISTINCT ON
+            #    (trabalhador, empresa) evita o erro do Postgres de "ON CONFLICT
+            #    não pode atingir a mesma linha duas vezes" quando o mesmo CPF
+            #    aparece 2x pro mesmo CNPJ (mantém a última pela `ordem`).
+            cur.execute(
+                """
+                INSERT INTO bss.lista_mensal_item
+                    (id_lista_mensal, id_trabalhador, id_empresa, id_sindicato,
+                     mes_referencia, nome_completo, titularidade, situacao_no_upload)
+                SELECT DISTINCT ON (m.id, s.id_empresa)
+                       s.id_lista, m.id, s.id_empresa, s.id_sindicato,
+                       %s, s.nome, 'titular', 'ativo'
+                  FROM _stage s
+                  JOIN _mapa m ON m.cpf = s.cpf
+                 ORDER BY m.id, s.id_empresa, s.ordem DESC
+                ON CONFLICT (id_trabalhador, mes_referencia, id_empresa) DO UPDATE
+                   SET id_lista_mensal    = EXCLUDED.id_lista_mensal,
+                       id_sindicato       = EXCLUDED.id_sindicato,
+                       nome_completo      = EXCLUDED.nome_completo,
+                       situacao_no_upload = 'ativo'
+                """,
+                (mes_referencia,),
+            )
+
+            # 8) Inativação dos AUSENTES, agora em bloco pra todas as empresas do
+            #    upload de uma vez. Ausente = estava ativo no CNPJ e não veio
+            #    nesta carga. Vira item 'inativo' (snapshot da saída).
+            cur.execute(
+                """
+                WITH ausentes AS (
+                    SELECT t.id, t.id_empresa_atual AS id_empresa,
+                           t.nome_completo, t.id_sindicato_atual
+                      FROM bss.trabalhador t
+                     WHERE t.id_empresa_atual IN (SELECT DISTINCT id_empresa FROM _stage)
+                       AND t.situacao = 'ativo'
+                       AND NOT EXISTS (
+                           SELECT 1 FROM _stage s
+                            WHERE s.cpf = t.cpf AND s.id_empresa = t.id_empresa_atual
+                       )
+                )
+                INSERT INTO bss.lista_mensal_item
+                    (id_lista_mensal, id_trabalhador, id_empresa, id_sindicato,
+                     mes_referencia, nome_completo, titularidade, situacao_no_upload)
+                SELECT el.id_lista, a.id, a.id_empresa,
+                       COALESCE(a.id_sindicato_atual,
+                                (SELECT id_sindicato FROM _stage s2
+                                  WHERE s2.id_empresa = a.id_empresa LIMIT 1)),
+                       %s, a.nome_completo, 'titular', 'inativo'
+                  FROM ausentes a
+                  JOIN (SELECT DISTINCT id_empresa, id_lista FROM _stage) el
+                    ON el.id_empresa = a.id_empresa
+                ON CONFLICT (id_trabalhador, mes_referencia, id_empresa) DO UPDATE
+                    SET situacao_no_upload = 'inativo'
+                """,
+                (mes_referencia,),
+            )
+
+            # 9) Trabalhador vira 'inativo' se não sobrou nenhum vínculo ativo
+            #    neste mês (podia estar ativo em outra empresa). Mesma regra do
+            #    loop antigo, agora numa tacada.
+            cur.execute(
+                """
+                UPDATE bss.trabalhador t
+                   SET situacao = 'inativo', atualizado_em = NOW()
+                 WHERE t.id_empresa_atual IN (SELECT DISTINCT id_empresa FROM _stage)
+                   AND t.situacao = 'ativo'
+                   AND NOT EXISTS (
+                       SELECT 1 FROM bss.lista_mensal_item lmi
+                        WHERE lmi.id_trabalhador = t.id
+                          AND lmi.mes_referencia = %s
+                          AND lmi.situacao_no_upload = 'ativo'
+                   )
+                """,
+                (mes_referencia,),
+            )
+            qtd_inativadas = cur.rowcount
 
         conn.commit()
 
