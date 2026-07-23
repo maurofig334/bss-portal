@@ -34,6 +34,7 @@ from app.sync import processo as sync_processo
 from app.sync import processo_mensagem as sync_processo_mensagem
 from app.sync import documento as sync_documento
 from app.sync import contato as sync_contato
+from app.sync import pagamento as sync_pagamento
 
 
 # Mapa: nome CLI → função sync()
@@ -47,6 +48,7 @@ TABELAS = {
     "processo_mensagem":  sync_processo_mensagem.sync,
     "documento":          sync_documento.sync,
     "contato":            sync_contato.sync,
+    "pagamento":          sync_pagamento.sync,
 }
 
 # Ordem recomendada quando rodar "todas"
@@ -62,6 +64,7 @@ ORDEM_TODAS = [
     "processo_mensagem",
     "documento",
     "contato",
+    "pagamento",          # DEPOIS de processo: liga a parcela ao benefício
 ]
 
 
