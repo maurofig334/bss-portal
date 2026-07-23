@@ -400,6 +400,41 @@ tela. Não é "o portal da empresa com menos itens no menu".
 
 ---
 
+## 5b. Mensageria nos benefícios ✅ (22/07/2026)
+
+Canal empresa ↔ analista dentro de cada benefício. Metade já existia (tabela,
+sync de 37.630 mensagens, aba de leitura); construído agora o que faltava:
+
+- **Escrita** — `POST /processos/{id}/mensagens`. Chat livre (só corpo; a
+  coluna `titulo` continua nas migradas, mas as novas nascem sem).
+- **Autor resolvido** — JOIN com bss_users traz nome/perfil e deriva
+  `eh_externo`. Balões: "meu lado" à direita, selo Cliente/BSS.
+- **Nota interna** — só a equipe marca; empresa/sindicato/contabilidade não
+  veem. **Corrigido um vazamento no caminho:** o GET usava lista negra
+  (`!= "empresa"`), então sindicato e contabilidade liam as notas internas.
+  Agora é lista branca (`in PERFIS_INTERNOS`).
+- **Mudança de status ao responder** — decisão da BSS ("analista escolhe ao
+  responder"). Grava em `processo_andamento` com a mensagem como comentário,
+  então o audit trail explica POR QUE o status mudou.
+- **Dois sinos, duas perguntas:**
+  - analista → "cliente falou por último?" (derivado; apaga ao responder)
+  - cliente → "tem mensagem que eu não li?" (precisa marca d'água —
+    `bss.processo_mensagem_leitura`, migração 20 — porque o cliente lê e não
+    responde, e "a última é da BSS" ficaria aceso pra sempre)
+- **E-mail** — quando a BSS responde, aviso imediato aos contatos da empresa
+  (BCC), **só protocolo + link, sem o texto** (LGPD: benefício lida com óbito,
+  acidente, incapacitação — não trafega por e-mail). Respeita
+  `preferencias_notificacao->'beneficio'` e pula `@contato.invalid`. Em
+  BackgroundTask: o SMTP não segura a resposta. Nota interna NÃO notifica.
+
+**Pendência do e-mail:** roda com SMTP provisório e `SMTP_VERIFICAR_CERT=false`
+— o certificado de `smtp.nexuserp.com.br` não casa com o hostname (erro que só
+apareceu porque o Python confere e outros projetos não conferiam). Antes de
+produção: usar hostname com certificado válido (ver
+`scripts/diagnosticar_smtp.py`) e religar a verificação.
+
+---
+
 ## 6. O portal legado mostra trabalhadores que não existem
 
 Descoberto em 17/07/2026 auditando o login `maurofig334@gmail.com`, e
@@ -426,10 +461,54 @@ enquanto a tela de Trabalhadores, que filtra por `id_empresa_atual` de verdade,
 mostrava vazio. Dois números, duas fontes, um sistema.
 
 **Reviravolta durante a própria auditoria:** entre duas execuções do script, o
-campo foi recalculado e passou a bater com a realidade (1.447 → 908). Algum job
-reescreveu tudo e ninguém sabe qual — o schema só diz "atualizado por job".
-❓ **Que job é esse, quando roda, de onde tira o número?** Processo desconhecido
-mutando dado é problema por si só.
+campo foi recalculado e passou a bater com a realidade (1.447 → 908).
+
+✅ **Mistério resolvido (22/07/2026): o "job" é nosso.** É
+`scripts/reconciliar_qtd_trabalhadores.py`, escrito numa sessão anterior, que
+recalcula os caches a partir de `bss.trabalhador`. Alguém o rodou. Nunca houve
+processo desconhecido — estava no repositório.
+
+### ⚠️ CABO DE GUERRA — bug em aberto
+
+Duas coisas escrevem no MESMO campo, com valores DIFERENTES:
+
+| Quem | O que grava |
+|---|---|
+| `sync/empresa.py` | copia `accounts_cstm.trabalhadores_ativos_c` do legado (`ON CONFLICT … = EXCLUDED`) |
+| `reconciliar_qtd_trabalhadores.py` | recontagem real de `bss.trabalhador` |
+
+**Quem rodou por último ganha.** O valor do campo depende da ordem de execução,
+não da realidade. A auditoria de 22/07 mediu 99,6% de concordância — mas só
+porque o reconciliar tinha rodado depois da sync. **A próxima sync traz o
+número errado de volta.**
+
+Correção pendente (independe do cliente): decidir quem manda. Ou a sync para de
+copiar esse campo (e ele passa a ser sempre nosso, recontado), ou a coluna vira
+espelho explícito do legado e a tela deixa de usá-la. Ver
+`scripts/medir_contagem_trabalhadores.py` — o índice parcial
+`idx_trab_emp_sind` já existe pra contar na hora.
+
+**Efeito colateral já ocorrido:** o RCOND mostrava 22 (valor do legado) e agora
+mostra 0 (nossa recontagem). **A evidência do bug do legado foi sobrescrita no
+nosso banco** — pra levar números à BSS, buscar direto no MySQL (temos leitura).
+
+### Auditoria com o cliente — decidido em 22/07/2026
+
+Mauro: *"vamos deixar esta auditoria pra fazer junto com o cliente, eles vão
+saber por que existem trabalhadores sem empresa e vão nos dar uma posição
+definitiva do que manter ou ignorar."*
+
+Dados medidos em 22/07 pra levar à reunião:
+
+- **25.694 trabalhadores sem `id_empresa_atual`** (3,7% de 689.795) — ❓ causa
+  desconhecida: nunca tiveram empresa no legado, ou a sync não vinculou?
+- 689.795 trabalhadores no total · 343.679 ativos · 346.116 não-ativos
+- 19 empresas com cache MENOR que a realidade (soma −153) — resíduo do cabo de
+  guerra acima
+- ⚠️ A tabela "15 MAIORES DIVERGÊNCIAS" do `auditar_cache_trabalhadores.py`
+  saiu **enganosa**: todas as linhas mostram `cache == real`, porque não havia
+  divergência positiva e o `ORDER BY` devolveu linhas arbitrárias. Deveria ter
+  vindo vazia — corrigir antes de mostrar a alguém.
 
 ### A lição de arquitetura
 
