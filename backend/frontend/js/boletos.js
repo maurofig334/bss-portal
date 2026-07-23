@@ -557,3 +557,12 @@ function renderResultadoEmissao(r) {
 // Seletor de empresa (só pro perfil 'empresa' com +1 CNPJ) — ver empresa-atual.js
 montarSeletorEmpresa("#seletor-empresa", recarregar);
 carregar();
+
+// ?emitir=1 — chegou aqui vindo da carga de trabalhadores (trabalhadores.js).
+// Abre o modal de emissão direto, pra empresa conferir e gerar os boletos.
+// Limpa o parâmetro da URL pra um F5 não reabrir o modal sem querer.
+if (new URLSearchParams(location.search).get("emitir") === "1") {
+  history.replaceState(null, "", "/app/boletos.html");
+  // Pequeno atraso: deixa a listagem e o seletor montarem antes do modal.
+  setTimeout(abrirModalEmissao, 300);
+}

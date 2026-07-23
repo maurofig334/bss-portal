@@ -447,6 +447,19 @@ async function enviarUpload() {
     }
     // Sucesso final (carregar/dependentes)
     renderSucessoFinal(data);
+
+    // Fluxo empresa: depois de CARREGAR trabalhadores, a próxima ação natural é
+    // gerar os boletos do mês. Em vez de o usuário navegar até Boletos e abrir o
+    // modal, mandamos direto pra tela de emissão com o preview já aberto — basta
+    // conferir e clicar "Gerar Boleto". Só pro modo 'carregar' (inativar e
+    // dependentes não geram boleto) e só pro perfil empresa (interno faz carga
+    // de várias empresas, não quer ser jogado na emissão a cada uma).
+    const u = usuarioAtual();
+    if (_modo_atual === "carregar" && u && u.perfil === "empresa") {
+      setTimeout(() => { window.location.href = "/app/boletos.html?emitir=1"; }, 1800);
+      return;
+    }
+
     setTimeout(() => { fecharModalUpload(); recarregar(); }, 2500);
   } catch (e) {
     status.innerHTML = `<div class="text-rose-600">Erro de rede: ${e.message}</div>`;
